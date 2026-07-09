@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
-import type { Product, Category, BusinessConfig, Order } from '../types';
+import type { Product, Category, BusinessConfig } from '../types';
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -10,16 +10,50 @@ import {
   Plus,
   Trash2,
   Copy,
-  DollarSign,
-  Package,
-  Eye,
-  TrendingUp,
-  Image as ImageIcon,
   Edit2,
   Save,
   Bell,
-  X
+  X,
+  ArrowUp,
+  ArrowDown,
+  Monitor,
+  Clock,
+  Sparkles,
+  Smartphone
 } from 'lucide-react';
+
+// Função para gerar beeps sonoros de notificação usando a Web Audio API
+const playNotificationSound = () => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Primeira nota (C5)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(523.25, ctx.currentTime);
+    gain1.gain.setValueAtTime(0.08, ctx.currentTime);
+    osc1.start();
+    osc1.stop(ctx.currentTime + 0.12);
+
+    // Segunda nota (E5) após 120ms
+    setTimeout(() => {
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(659.25, ctx.currentTime);
+      gain2.gain.setValueAtTime(0.08, ctx.currentTime);
+      osc2.start();
+      osc2.stop(ctx.currentTime + 0.22);
+    }, 120);
+  } catch (err) {
+    console.error('Falha ao reproduzir som de notificação:', err);
+  }
+};
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -37,11 +71,15 @@ export const AdminDashboard: React.FC = () => {
     saveConfig,
     updateOrderStatus,
     resetDatabase,
-    lowStockAlerts
+    lowStockAlerts,
+    refreshAdmin
   } = useAdmin();
 
   // Abas do Painel
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'categories' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'categories' | 'editor' | 'settings'>('dashboard');
+
+  // Sub-abas do Dashboard (Métricas vs Analytics Avançado)
+  const [dashSubTab, setDashSubTab] = useState<'overview' | 'analytics' | 'heatmap' | 'messages'>('overview');
 
   // Controle de Modais
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -57,31 +95,47 @@ export const AdminDashboard: React.FC = () => {
   const [prodFeatured, setProdFeatured] = useState(false);
   const [prodBestSeller, setProdBestSeller] = useState(false);
   const [prodImages, setProdImages] = useState<string[]>([]);
-  const [dragActive, setDragActive] = useState(false);
-
   // Estados dos formulários de Categoria
   const [newCatName, setNewCatName] = useState('');
 
   // Busca interna de produtos
   const [prodSearchQuery, setProdSearchQuery] = useState('');
 
-  // Estados da configuração visual (White-Label)
+  // Mensagens de suporte recebidas
+  const [customerMessages, setCustomerMessages] = useState<any[]>([]);
+
+  // Estados da configuração visual (Shopify-like Builder)
   const [configName, setConfigName] = useState(config.name);
   const [configPhone, setConfigPhone] = useState(config.phone);
   const [configAddress, setConfigAddress] = useState(config.address);
   const [configDeliveryFee, setConfigDeliveryFee] = useState(config.deliveryFee);
   const [configWorkingHours, setConfigWorkingHours] = useState(config.workingHours);
+  
+  // Customização Visual do Builder
   const [configPrimaryColor, setConfigPrimaryColor] = useState(config.primaryColor);
   const [configSecondaryColor, setConfigSecondaryColor] = useState(config.secondaryColor);
+  const [configBgColor, setConfigBgColor] = useState(config.backgroundColor || '#f7f9f7');
+  const [configTextColor, setConfigTextColor] = useState(config.textColor || '#2c3e2c');
   const [configThemePreset, setConfigThemePreset] = useState(config.themePreset);
   const [configBorderRadius, setConfigBorderRadius] = useState(config.borderRadius);
+  const [configButtonStyle, setConfigButtonStyle] = useState(config.buttonStyle || 'rounded');
+  
+  // Banner Customizer
+  const [configBannerTitle, setConfigBannerTitle] = useState(config.bannerTitle || 'Sua Floricultura Digital de Confiança');
+  const [configBannerSubtitle, setConfigBannerSubtitle] = useState(config.bannerSubtitle || 'Escolha o presente perfeito, monte seu carrinho e finalize o pedido diretamente pelo WhatsApp.');
+  const [configBannerImage, setConfigBannerImage] = useState(config.bannerImage || '/florist_banner.png');
+  const configBannerBtnText = config.bannerBtnText || 'Ver Todos os Produtos';
+  const [configSectionsOrder, setConfigSectionsOrder] = useState<string[]>(config.sectionsOrder || ['hero', 'categories', 'featured', 'bestsellers', 'catalog']);
 
-  // --- MOCK THEMES PRESETS ---
+  // --- 7 PRESETS DE TEMAS WHITE-LABEL ---
   const THEME_PRESETS = [
-    { id: 'forest-green', name: 'Verde Floresta (Clássico)', primary: '#1e3a1e', secondary: '#f7a8b8' },
-    { id: 'elegant-rose', name: 'Rosê Romântico', primary: '#b53f60', secondary: '#f9e5e9' },
-    { id: 'modern-lavender', name: 'Moderno Lavanda', primary: '#6a5acd', secondary: '#f3effa' },
-    { id: 'tropical-orchid', name: 'Orquídea Tropical', primary: '#c71585', secondary: '#ffe4e1' },
+    { id: 'elegance', name: 'Floricultura Elegance', primary: '#b53f60', secondary: '#fcdfd7', bg: '#fbf8f7', text: '#3c242b', radius: 'md', btn: 'pill' },
+    { id: 'garden-modern', name: 'Garden Modern (Padrão)', primary: '#198754', secondary: '#e8f5e9', bg: '#f8faf9', text: '#192f19', radius: 'md', btn: 'rounded' },
+    { id: 'minimal', name: 'Minimal (P&B)', primary: '#000000', secondary: '#f1f1f1', bg: '#ffffff', text: '#111111', radius: 'none', btn: 'rect' },
+    { id: 'premium', name: 'Premium (Esmeralda)', primary: '#0f5132', secondary: '#fcd3e5', bg: '#faf6f8', text: '#193024', radius: 'md', btn: 'rounded' },
+    { id: 'dark', name: 'Dark Mode (Escuro)', primary: '#25d366', secondary: '#2d2f36', bg: '#121212', text: '#e2e8f0', radius: 'md', btn: 'pill' },
+    { id: 'luxury', name: 'Luxury (Marinho)', primary: '#0f172a', secondary: '#caf0f8', bg: '#f8fafc', text: '#0f172a', radius: 'sm', btn: 'rect' },
+    { id: 'natural', name: 'Natural (Terracota)', primary: '#2d6a4f', secondary: '#ffb703', bg: '#f9f6f0', text: '#1b4332', radius: 'lg', btn: 'rounded' }
   ];
 
   const applyPreset = (presetId: string) => {
@@ -90,41 +144,174 @@ export const AdminDashboard: React.FC = () => {
       setConfigThemePreset(presetId);
       setConfigPrimaryColor(preset.primary);
       setConfigSecondaryColor(preset.secondary);
+      setConfigBgColor(preset.bg);
+      setConfigTextColor(preset.text);
+      setConfigBorderRadius(preset.radius);
+      setConfigButtonStyle(preset.btn as any);
+      
+      // Auto-salva no banco para atualizar o preview
+      const updatedConfig: BusinessConfig = {
+        ...config,
+        themePreset: presetId,
+        primaryColor: preset.primary,
+        secondaryColor: preset.secondary,
+        backgroundColor: preset.bg,
+        textColor: preset.text,
+        borderRadius: preset.radius,
+        buttonStyle: preset.btn as any
+      };
+      saveConfig(updatedConfig);
     }
   };
 
-  // --- PRODUCT CRUD ACTIONS ---
-  const openNewProductModal = () => {
-    setEditingProduct(null);
-    setProdName('');
-    setProdDesc('');
-    setProdPrice(null);
-    setProdPromoPrice(null);
-    setProdCategory(categories[0]?.id || '');
-    setProdStock(10);
-    setProdFeatured(false);
-    setProdBestSeller(false);
-    setProdImages([]);
-    setIsProductModalOpen(true);
+  // --- ESCUTADOR DE NOTIFICAÇÕES (PWA / STORAGE) ---
+  useEffect(() => {
+    // Carregar mensagens do cliente inicialmente
+    setCustomerMessages(JSON.parse(localStorage.getItem('floricultura_customer_messages') || '[]'));
+
+    // Pedir permissão de notificações do navegador
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+
+    const handleStorageChange = () => {
+      // 1. Monitora novos pedidos
+      const savedOrders = JSON.parse(localStorage.getItem('floricultura_orders') || '[]');
+      const lastOrderCount = Number(localStorage.getItem('last_order_count') || '0');
+      
+      if (savedOrders.length > lastOrderCount) {
+        localStorage.setItem('last_order_count', savedOrders.length.toString());
+        if (lastOrderCount > 0) {
+          playNotificationSound();
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('🌸 Novo Pedido Recebido!', {
+              body: `Pedido #${savedOrders[0].id} de ${savedOrders[0].customerName} no valor de R$ ${savedOrders[0].total.toFixed(2)}`,
+              icon: '/favicon.svg'
+            });
+          }
+        }
+      } else {
+        localStorage.setItem('last_order_count', savedOrders.length.toString());
+      }
+
+      // 2. Monitora mensagens do cliente
+      const savedMsgs = JSON.parse(localStorage.getItem('floricultura_customer_messages') || '[]');
+      setCustomerMessages(savedMsgs);
+      const lastMsgCount = Number(localStorage.getItem('last_msg_count') || '0');
+      
+      if (savedMsgs.length > lastMsgCount) {
+        localStorage.setItem('last_msg_count', savedMsgs.length.toString());
+        if (lastMsgCount > 0) {
+          playNotificationSound();
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('💬 Nova Mensagem de Suporte!', {
+              body: `${savedMsgs[0].name}: "${savedMsgs[0].message}"`,
+              icon: '/favicon.svg'
+            });
+          }
+        }
+      } else {
+        localStorage.setItem('last_msg_count', savedMsgs.length.toString());
+      }
+
+      // 3. Monitora se o estoque zerou
+      const savedProducts = JSON.parse(localStorage.getItem('floricultura_products') || '[]');
+      const outOfStockIds = savedProducts.filter((p: any) => p.stock === 0 && p.active).map((p: any) => p.id);
+      const prevOutOfStock = JSON.parse(localStorage.getItem('prev_out_of_stock') || '[]');
+      
+      const newOutOfStock = outOfStockIds.filter((id: string) => !prevOutOfStock.includes(id));
+      if (newOutOfStock.length > 0) {
+        const prod = savedProducts.find((p: any) => p.id === newOutOfStock[0]);
+        if (prod) {
+          playNotificationSound();
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('⚠️ Produto Esgotado!', {
+              body: `O produto "${prod.name}" acabou de ficar sem estoque.`,
+              icon: '/favicon.svg'
+            });
+          }
+        }
+      }
+      localStorage.setItem('prev_out_of_stock', JSON.stringify(outOfStockIds));
+
+      refreshAdmin();
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('new_customer_message', handleStorageChange);
+    
+    // Inicializar os contadores de controle
+    localStorage.setItem('last_order_count', orders.length.toString());
+    localStorage.setItem('last_msg_count', customerMessages.length.toString());
+    const initProducts = JSON.parse(localStorage.getItem('floricultura_products') || '[]');
+    localStorage.setItem('prev_out_of_stock', JSON.stringify(initProducts.filter((p: any) => p.stock === 0 && p.active).map((p: any) => p.id)));
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('new_customer_message', handleStorageChange);
+    };
+  }, [orders, customerMessages, refreshAdmin]);
+
+  // --- REORDENAÇÃO DE SEÇÕES (BUILDER) ---
+  const moveSection = (index: number, direction: 'up' | 'down') => {
+    const updated = [...configSectionsOrder];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    
+    if (targetIndex < 0 || targetIndex >= updated.length) return;
+    
+    // Troca
+    const temp = updated[index];
+    updated[index] = updated[targetIndex];
+    updated[targetIndex] = temp;
+    
+    setConfigSectionsOrder(updated);
+    
+    // Auto-salva para atualizar o iframe/preview
+    saveConfig({
+      ...config,
+      sectionsOrder: updated
+    });
   };
 
-  const openEditProductModal = (product: Product) => {
-    setEditingProduct(product);
-    setProdName(product.name);
-    setProdDesc(product.description);
-    setProdPrice(product.price);
-    setProdPromoPrice(product.promoPrice);
-    setProdCategory(product.categoryId);
-    setProdStock(product.stock);
-    setProdFeatured(product.featured);
-    setProdBestSeller(product.bestSeller);
-    setProdImages(product.images);
-    setIsProductModalOpen(true);
+  const sectionNamePT = (key: string) => {
+    switch (key) {
+      case 'hero': return 'Banner Principal (Hero)';
+      case 'categories': return 'Navegador de Categorias';
+      case 'featured': return 'Grid de Destaques';
+      case 'bestsellers': return 'Grid de Mais Vendidos';
+      case 'catalog': return 'Catálogo Completo';
+      default: return key;
+    }
+  };
+
+  // --- ACTIONS ---
+  const handleConfigSave = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const updatedConfig: BusinessConfig = {
+      ...config,
+      name: configName,
+      phone: configPhone,
+      address: configAddress,
+      deliveryFee: Number(configDeliveryFee),
+      workingHours: configWorkingHours,
+      primaryColor: configPrimaryColor,
+      secondaryColor: configSecondaryColor,
+      backgroundColor: configBgColor,
+      textColor: configTextColor,
+      themePreset: configThemePreset,
+      borderRadius: configBorderRadius,
+      buttonStyle: configButtonStyle,
+      bannerTitle: configBannerTitle,
+      bannerSubtitle: configBannerSubtitle,
+      bannerImage: configBannerImage,
+      bannerBtnText: configBannerBtnText,
+      sectionsOrder: configSectionsOrder
+    };
+    saveConfig(updatedConfig);
   };
 
   const handleProductSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     const productData: Product = {
       id: editingProduct ? editingProduct.id : `prod-${Math.floor(1000 + Math.random() * 9000)}`,
       name: prodName,
@@ -145,50 +332,6 @@ export const AdminDashboard: React.FC = () => {
     setIsProductModalOpen(false);
   };
 
-  // Drag and drop handler
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true);
-    } else if (e.type === "dragleave") {
-      setDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFiles(e.dataTransfer.files);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFiles(e.target.files);
-    }
-  };
-
-  const handleFiles = (files: FileList) => {
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setProdImages(prev => [...prev, reader.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const removeImage = (indexToRemove: number) => {
-    setProdImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
-  };
-
-  // --- CATEGORY CRUD ACTIONS ---
   const handleCreateCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
@@ -204,30 +347,11 @@ export const AdminDashboard: React.FC = () => {
     setNewCatName('');
   };
 
-  // --- CONFIG ACTIONS ---
-  const handleConfigSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const updatedConfig: BusinessConfig = {
-      ...config,
-      name: configName,
-      phone: configPhone,
-      address: configAddress,
-      deliveryFee: Number(configDeliveryFee),
-      workingHours: configWorkingHours,
-      primaryColor: configPrimaryColor,
-      secondaryColor: configSecondaryColor,
-      themePreset: configThemePreset,
-      borderRadius: configBorderRadius
-    };
-    saveConfig(updatedConfig);
-  };
-
-  // --- INLINE EDIT HELPERS ---
+  // Inline table controls
   const updateProductPriceInline = (id: string, val: string) => {
     const prod = products.find(p => p.id === id);
     if (!prod) return;
-    const num = val === '' ? null : Number(val);
-    saveProduct({ ...prod, price: num });
+    saveProduct({ ...prod, price: val === '' ? null : Number(val) });
   };
 
   const updateProductStockInline = (id: string, val: number) => {
@@ -236,26 +360,104 @@ export const AdminDashboard: React.FC = () => {
     saveProduct({ ...prod, stock: Math.max(0, val) });
   };
 
-  const toggleProductActive = (id: string) => {
-    const prod = products.find(p => p.id === id);
-    if (!prod) return;
-    saveProduct({ ...prod, active: !prod.active });
+  // Busca filtrada de produtos para a tabela administrativa
+  const filteredProducts = products.filter(p =>
+    p.name.toLowerCase().includes(prodSearchQuery.toLowerCase())
+  );
+
+  const openNewProductModal = () => {
+    setEditingProduct(null);
+    setProdName('');
+    setProdDesc('');
+    setProdPrice(null);
+    setProdPromoPrice(null);
+    setProdCategory(categories[0]?.id || '');
+    setProdStock(10);
+    setProdFeatured(false);
+    setProdBestSeller(false);
+    setProdImages([]);
+    setIsProductModalOpen(true);
   };
 
-  const toggleProductFeatured = (id: string) => {
-    const prod = products.find(p => p.id === id);
-    if (!prod) return;
-    saveProduct({ ...prod, featured: !prod.featured });
+  const openEditProductModal = (p: Product) => {
+    setEditingProduct(p);
+    setProdName(p.name);
+    setProdDesc(p.description);
+    setProdPrice(p.price);
+    setProdPromoPrice(p.promoPrice);
+    setProdCategory(p.categoryId);
+    setProdStock(p.stock);
+    setProdFeatured(p.featured);
+    setProdBestSeller(p.bestSeller);
+    setProdImages(p.images);
+    setIsProductModalOpen(true);
   };
 
-  // --- FILTRO DE PRODUTOS NO ADMIN ---
-  const getFilteredProductsAdmin = () => {
-    if (!prodSearchQuery.trim()) return products;
-    const q = prodSearchQuery.toLowerCase();
-    return products.filter(p => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q));
+  // --- MOCK FILES & MOCK LOADERS FOR IMAGES ---
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setProdImages(prev => [...prev, reader.result as string]);
+        }
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    }
   };
 
-  const filteredProducts = getFilteredProductsAdmin();
+  const handleBannerFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setConfigBannerImage(reader.result as string);
+          // Auto-salva para atualizar o preview
+          saveConfig({
+            ...config,
+            bannerImage: reader.result as string
+          });
+        }
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    }
+  };
+
+  // --- CHARTS CALCULATIONS (SVG) ---
+
+  // 1. Pizza/Rosca Origens
+  const googleCount = stats.sources?.google || 12;
+  const instaCount = stats.sources?.instagram || 45;
+  const fbCount = stats.sources?.facebook || 18;
+  const qrCount = stats.sources?.qrcode || 9;
+  const directCount = stats.sources?.direct || 16;
+  const totalSources = googleCount + instaCount + fbCount + qrCount + directCount || 1;
+
+  const googlePct = Number(((googleCount / totalSources) * 100).toFixed(0));
+  const instaPct = Number(((instaCount / totalSources) * 100).toFixed(0));
+  const fbPct = Number(((fbCount / totalSources) * 100).toFixed(0));
+  const qrPct = Number(((qrCount / totalSources) * 100).toFixed(0));
+  const directPct = Number(((directCount / totalSources) * 100).toFixed(0));
+
+  // Desenhar Donut Chart em SVG usando strokeDasharray
+  const r = 50;
+  const circ = 2 * Math.PI * r; // ~314.16
+
+  const googleDash = (googlePct / 100) * circ;
+  const instaDash = (instaPct / 100) * circ;
+  const fbDash = (fbPct / 100) * circ;
+  const qrDash = (qrPct / 100) * circ;
+  const directDash = (directPct / 100) * circ;
+
+  // 2. Horários de Pico (SVG Line Polyline Points)
+  const maxViews = Math.max(...Object.values(stats.hourlyViews || {}), 1);
+  const polylinePoints = Object.entries(stats.hourlyViews || {})
+    .map(([hour, val]) => {
+      const x = (Number(hour) / 23) * 320 + 40; // 40px left padding, 320px width
+      const y = 140 - (Number(val) / maxViews) * 100; // 140px height, 100px max height
+      return `${x},${y}`;
+    })
+    .join(' ');
 
   return (
     <div style={{
@@ -266,7 +468,7 @@ export const AdminDashboard: React.FC = () => {
       flexDirection: 'column',
       paddingBottom: '40px'
     }}>
-      {/* Menu / Navegação do Administrador */}
+      {/* Top Navbar */}
       <div style={{ borderBottom: '1px solid var(--color-admin-border)', backgroundColor: 'var(--color-admin-card)', padding: '12px 0' }}>
         <div className="container flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-6">
@@ -284,7 +486,7 @@ export const AdminDashboard: React.FC = () => {
                 color: '#ffffff'
               }}
             >
-              <LayoutDashboard size={18} /> Dashboard
+              <LayoutDashboard size={18} /> Dashboard / Analytics
             </button>
             <button
               onClick={() => setActiveTab('products')}
@@ -319,6 +521,22 @@ export const AdminDashboard: React.FC = () => {
               <FolderOpen size={18} /> Categorias
             </button>
             <button
+              onClick={() => setActiveTab('editor')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                borderRadius: 'var(--border-radius-theme)',
+                fontSize: '14px',
+                fontWeight: 600,
+                backgroundColor: activeTab === 'editor' ? 'var(--color-primary)' : 'transparent',
+                color: '#ffffff'
+              }}
+            >
+              <Monitor size={18} style={{ color: 'var(--color-secondary)' }} /> Editor Visual
+            </button>
+            <button
               onClick={() => setActiveTab('settings')}
               style={{
                 display: 'flex',
@@ -332,7 +550,7 @@ export const AdminDashboard: React.FC = () => {
                 color: '#ffffff'
               }}
             >
-              <Settings size={18} /> Customização / Loja
+              <Settings size={18} /> Dados Gerais
             </button>
           </div>
 
@@ -353,7 +571,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Área de Notificações / Alertas de Estoque Baixo */}
+      {/* Alertas de Estoque Baixo */}
       {lowStockAlerts.length > 0 && activeTab === 'dashboard' && (
         <div className="container mt-6">
           <div style={{
@@ -362,278 +580,555 @@ export const AdminDashboard: React.FC = () => {
             borderRadius: 'var(--border-radius-theme)',
             padding: '16px',
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             gap: '12px'
           }} className="animate-fade">
-            <Bell size={20} style={{ color: 'var(--color-warning)', flexShrink: 0, marginTop: '2px' }} />
+            <Bell size={20} style={{ color: 'var(--color-warning)' }} />
             <div>
-              <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-warning)' }}>Alertas de Estoque Baixo</h4>
-              <p style={{ fontSize: '13px', color: 'var(--color-admin-text-muted)', marginTop: '4px' }}>
-                Os seguintes itens precisam ser reabastecidos:
+              <h4 style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-warning)' }}>Atenção: Itens em Alerta de Estoque</h4>
+              <p style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', marginTop: '2px' }}>
+                Há {lowStockAlerts.length} produtos que estão prestes a esgotar no catálogo do cliente.
               </p>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                {lowStockAlerts.map(p => (
-                  <span key={p.id} className="badge badge-warning" style={{ fontSize: '11px' }}>
-                    {p.name} ({p.stock} un)
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* CORPO DE ABAS */}
+      {/* TABS BODY */}
       <div className="container mt-6 flex-1">
         
-        {/* TAB 1: DASHBOARD */}
+        {/* TAB 1: DASHBOARD & ANALYTICS */}
         {activeTab === 'dashboard' && (
           <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             
-            {/* Grid de Estatísticas */}
+            {/* Sub-abas do Dashboard */}
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '20px'
+              display: 'flex',
+              borderBottom: '1px solid var(--color-admin-border)',
+              gap: '12px',
+              paddingBottom: '2px'
             }}>
-              {/* Card Faturamento */}
-              <div style={{
-                backgroundColor: 'var(--color-admin-card)',
-                border: '1px solid var(--color-admin-border)',
-                borderRadius: 'var(--border-radius-theme)',
-                padding: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px'
-              }}>
-                <div style={{
-                  backgroundColor: 'rgba(46, 196, 182, 0.1)',
-                  color: 'var(--color-success)',
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <DollarSign size={24} />
-                </div>
-                <div>
-                  <span style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase' }}>Faturamento (Mês)</span>
-                  <h4 style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px' }}>R$ {stats.monthlyRevenue.toFixed(2)}</h4>
-                </div>
-              </div>
-
-              {/* Card Produtos */}
-              <div style={{
-                backgroundColor: 'var(--color-admin-card)',
-                border: '1px solid var(--color-admin-border)',
-                borderRadius: 'var(--border-radius-theme)',
-                padding: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px'
-              }}>
-                <div style={{
-                  backgroundColor: 'rgba(30, 58, 30, 0.2)',
-                  color: 'var(--color-success)',
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Package size={24} />
-                </div>
-                <div>
-                  <span style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase' }}>Total Produtos</span>
-                  <h4 style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px' }}>{stats.totalProducts}</h4>
-                </div>
-              </div>
-
-              {/* Card Visualizações */}
-              <div style={{
-                backgroundColor: 'var(--color-admin-card)',
-                border: '1px solid var(--color-admin-border)',
-                borderRadius: 'var(--border-radius-theme)',
-                padding: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px'
-              }}>
-                <div style={{
-                  backgroundColor: 'rgba(90, 62, 135, 0.2)',
-                  color: '#9f7aea',
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Eye size={24} />
-                </div>
-                <div>
-                  <span style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase' }}>Visitas Catálogo</span>
-                  <h4 style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px' }}>{stats.catalogViews}</h4>
-                </div>
-              </div>
-
-              {/* Card Sem Estoque */}
-              <div style={{
-                backgroundColor: 'var(--color-admin-card)',
-                border: '1px solid var(--color-admin-border)',
-                borderRadius: 'var(--border-radius-theme)',
-                padding: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '16px'
-              }}>
-                <div style={{
-                  backgroundColor: 'rgba(230, 57, 70, 0.1)',
-                  color: 'var(--color-danger)',
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <TrendingUp size={24} style={{ transform: 'rotate(90deg)' }} />
-                </div>
-                <div>
-                  <span style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase' }}>Sem Estoque</span>
-                  <h4 style={{ fontSize: '20px', fontWeight: 800, marginTop: '2px' }}>{stats.outOfStockProducts}</h4>
-                </div>
-              </div>
+              {['overview', 'analytics', 'heatmap', 'messages'].map((sub) => {
+                const labels: Record<string, string> = {
+                  overview: 'Estatísticas Gerais',
+                  analytics: 'Analytics Avançado',
+                  heatmap: 'Mapa de Calor de Cliques',
+                  messages: `Mensagens Suporte (${customerMessages.filter(m => !m.read).length})`
+                };
+                return (
+                  <button
+                    key={sub}
+                    onClick={() => setDashSubTab(sub as any)}
+                    style={{
+                      padding: '8px 16px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      borderBottom: dashSubTab === sub ? '2px solid var(--color-primary)' : 'none',
+                      color: dashSubTab === sub ? 'var(--color-admin-text)' : 'var(--color-admin-text-muted)'
+                    }}
+                  >
+                    {labels[sub]}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Atalhos Rápidos */}
-            <div style={{
-              backgroundColor: 'var(--color-admin-card)',
-              border: '1px solid var(--color-admin-border)',
-              borderRadius: 'var(--border-radius-theme)',
-              padding: '20px'
-            }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '15px' }}>Atalhos Rápidos</h3>
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <button className="btn btn-sm btn-primary" onClick={() => { openNewProductModal(); setActiveTab('products'); }}>
-                  <Plus size={16} /> Cadastrar Produto
-                </button>
-                <button className="btn btn-sm btn-outline" style={{ color: 'var(--color-admin-text)' }} onClick={() => setActiveTab('categories')}>
-                  Nova Categoria
-                </button>
-                <button className="btn btn-sm btn-outline" style={{ color: 'var(--color-admin-text)' }} onClick={() => setActiveTab('settings')}>
-                  Alterar Tema
-                </button>
-              </div>
-            </div>
+            {/* SUBTAB 1.1: OVERVIEW COMUM */}
+            {dashSubTab === 'overview' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }} className="animate-fade">
+                {/* 4 Cards Principais */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Faturamento Mensal</div>
+                    <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '6px' }}>R$ {stats.monthlyRevenue.toFixed(2)}</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Pedidos Hoje</div>
+                    <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '6px' }}>{stats.ordersTodayCount}</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Conversões WhatsApp</div>
+                    <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '6px' }}>{stats.whatsappClicksCount}</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Taxa de Conversão</div>
+                    <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '6px', color: 'var(--color-success)' }}>{stats.conversionRate}%</div>
+                  </div>
+                </div>
 
-            {/* Listas Inferiores (Pedidos Recentes & Visualizações) */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-              gap: '24px'
-            }}>
-              {/* Pedidos Recentes */}
-              <div style={{
-                backgroundColor: 'var(--color-admin-card)',
-                border: '1px solid var(--color-admin-border)',
-                borderRadius: 'var(--border-radius-theme)',
-                padding: '20px'
-              }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '15px' }}>Pedidos Recentes</h3>
-                
-                {orders.length === 0 ? (
-                  <p style={{ color: 'var(--color-admin-text-muted)', fontSize: '13px' }}>Nenhum pedido recebido ainda.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Gráficos em Linha / SVG */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                  
+                  {/* Gráfico 1: Acessos por Hora (Pico) */}
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Clock size={16} /> Fluxo de Horário de Pico (Acessos/Hora)
+                    </h4>
+                    <div style={{ width: '100%', height: '160px' }}>
+                      <svg viewBox="0 0 400 160" style={{ width: '100%', height: '100%' }}>
+                        {/* Linhas de grade horizontais */}
+                        <line x1="40" y1="40" x2="360" y2="40" stroke="#272d2d" strokeWidth="1" strokeDasharray="4 4" />
+                        <line x1="40" y1="90" x2="360" y2="90" stroke="#272d2d" strokeWidth="1" strokeDasharray="4 4" />
+                        <line x1="40" y1="140" x2="360" y2="140" stroke="#272d2d" strokeWidth="1.5" />
+                        
+                        {/* Linha de dados */}
+                        <polyline
+                          fill="none"
+                          stroke="var(--color-primary)"
+                          strokeWidth="3.5"
+                          points={polylinePoints}
+                          style={{ transition: 'all 0.5s ease' }}
+                        />
+                        
+                        {/* Legendas de Horas */}
+                        <text x="40" y="155" fill="var(--color-admin-text-muted)" fontSize="9" textAnchor="middle">00h</text>
+                        <text x="120" y="155" fill="var(--color-admin-text-muted)" fontSize="9" textAnchor="middle">06h</text>
+                        <text x="200" y="155" fill="var(--color-admin-text-muted)" fontSize="9" textAnchor="middle">12h</text>
+                        <text x="280" y="155" fill="var(--color-admin-text-muted)" fontSize="9" textAnchor="middle">18h</text>
+                        <text x="360" y="155" fill="var(--color-admin-text-muted)" fontSize="9" textAnchor="middle">23h</text>
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Gráfico 2: Donut Origens do Tráfego */}
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px', display: 'flex', gap: '20px', alignItems: 'center' }}>
+                    <div style={{ width: '120px', height: '120px', flexShrink: 0 }}>
+                      <svg viewBox="0 0 120 120" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+                        {/* Google */}
+                        <circle cx="60" cy="60" r="50" fill="transparent" stroke="#ffb703" strokeWidth="12"
+                          strokeDasharray={`${googleDash} ${circ - googleDash}`} />
+                        {/* Instagram */}
+                        <circle cx="60" cy="60" r="50" fill="transparent" stroke="#f72585" strokeWidth="12"
+                          strokeDasharray={`${instaDash} ${circ - instaDash}`} strokeDashoffset={-googleDash} />
+                        {/* Facebook */}
+                        <circle cx="60" cy="60" r="50" fill="transparent" stroke="#3b5998" strokeWidth="12"
+                          strokeDasharray={`${fbDash} ${circ - fbDash}`} strokeDashoffset={-(googleDash + instaDash)} />
+                        {/* QR Code */}
+                        <circle cx="60" cy="60" r="50" fill="transparent" stroke="#2ec4b6" strokeWidth="12"
+                          strokeDasharray={`${qrDash} ${circ - qrDash}`} strokeDashoffset={-(googleDash + instaDash + fbDash)} />
+                        {/* Direct */}
+                        <circle cx="60" cy="60" r="50" fill="transparent" stroke="#6c757d" strokeWidth="12"
+                          strokeDasharray={`${directDash} ${circ - directDash}`} strokeDashoffset={-(googleDash + instaDash + fbDash + qrDash)} />
+                      </svg>
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px' }}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px', color: 'var(--color-admin-text)' }}>Canais de Origem</h4>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ffb703' }} />
+                        <span>Google ({googlePct}%)</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f72585' }} />
+                        <span>Instagram ({instaPct}%)</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#3b5998' }} />
+                        <span>Facebook ({fbPct}%)</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#2ec4b6' }} />
+                        <span>QR Code ({qrPct}%)</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#6c757d' }} />
+                        <span>Direto ({directPct}%)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pedidos Recentes */}
+                <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '15px' }}>Lista de Pedidos Recentes</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {orders.map(order => (
-                      <div key={order.id} style={{
-                        padding: '12px',
-                        border: '1px solid var(--color-admin-border)',
-                        borderRadius: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'between',
-                        gap: '16px'
-                      }} className="justify-between">
+                      <div key={order.id} style={{ padding: '12px', border: '1px solid var(--color-admin-border)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="justify-between">
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '13px', fontWeight: 700 }}>#{order.id}</span>
-                            <span style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)' }}>{order.customerName}</span>
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '13px', fontWeight: 700 }}>
+                            <span>#{order.id}</span>
+                            <span style={{ color: 'var(--color-admin-text-muted)', fontWeight: 500 }}>{order.customerName}</span>
                           </div>
                           <div style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', marginTop: '2px' }}>
                             {order.items.length} itens • R$ {order.total.toFixed(2)}
                           </div>
                         </div>
-
-                        {/* Dropdown status */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <select
-                            value={order.status}
-                            onChange={(e) => updateOrderStatus(order.id, e.target.value as Order['status'])}
-                            style={{
-                              backgroundColor: 'var(--color-admin-input)',
-                              color: 'var(--color-admin-text)',
-                              border: '1px solid var(--color-admin-border)',
-                              borderRadius: '4px',
-                              padding: '6px 10px',
-                              fontSize: '12px'
-                            }}
-                          >
-                            <option value="pending">Pendente</option>
-                            <option value="completed">Concluído</option>
-                            <option value="cancelled">Cancelado</option>
-                          </select>
-                        </div>
+                        <select
+                          value={order.status}
+                          onChange={(e) => updateOrderStatus(order.id, e.target.value as any)}
+                          style={{
+                            backgroundColor: 'var(--color-admin-input)',
+                            color: 'var(--color-admin-text)',
+                            border: '1px solid var(--color-admin-border)',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            fontSize: '12px'
+                          }}
+                        >
+                          <option value="pending">Pendente</option>
+                          <option value="completed">Concluído</option>
+                          <option value="cancelled">Cancelado</option>
+                        </select>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
-
-              {/* Mais Vistos / Estatísticas Extras */}
-              <div style={{
-                backgroundColor: 'var(--color-admin-card)',
-                border: '1px solid var(--color-admin-border)',
-                borderRadius: 'var(--border-radius-theme)',
-                padding: '20px'
-              }}>
-                <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '15px' }}>Produtos Mais Visualizados</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {stats.mostViewedProducts.map(p => (
-                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <img src={p.images[0]} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover' }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <h4 style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</h4>
-                        <span style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)' }}>
-                          {p.price ? `R$ ${p.price.toFixed(2)}` : 'Sob Consulta'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', fontWeight: 600 }}>
-                        <Eye size={14} style={{ color: 'var(--color-admin-text-muted)' }} /> {p.views}
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* SUBTAB 1.2: ANALYTICS AVANÇADO */}
+            {dashSubTab === 'analytics' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }} className="animate-fade">
+                
+                {/* Tempo Médio e Pedidos Gerais */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Tempo Médio na Página</div>
+                    <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '6px' }}>{stats.avgTimeOnPage} segundos</div>
+                  </div>
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Pedidos Esta Semana</div>
+                    <div style={{ fontSize: '24px', fontWeight: 800, marginTop: '6px' }}>{stats.ordersWeekCount}</div>
+                  </div>
+                </div>
+
+                {/* Mais Vistos vs Menos Vistos */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+                  
+                  {/* Mais Vistos */}
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-success)' }}>
+                      <Sparkles size={16} /> Produtos Mais Visto (Quente)
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {stats.mostViewedProducts.map((p, idx) => (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-admin-text-muted)' }}>{idx + 1}.</span>
+                          <img src={p.images[0]} alt="" style={{ width: '36px', height: '36px', borderRadius: '4px', objectFit: 'cover' }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h5 style={{ fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</h5>
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: 700 }}>{p.views} visualizações</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Menos Vistos */}
+                  <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                    <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-accent)' }}>
+                      <Clock size={16} /> Produtos Menos Vistos (Frio)
+                    </h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {stats.leastViewedProducts.map((p, idx) => (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--color-admin-text-muted)' }}>{idx + 1}.</span>
+                          <img src={p.images[0]} alt="" style={{ width: '36px', height: '36px', borderRadius: '4px', objectFit: 'cover' }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h5 style={{ fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</h5>
+                          </div>
+                          <span style={{ fontSize: '12px', fontWeight: 700 }}>{p.views} visualizações</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Categorias mais Acessadas */}
+                <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '20px' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: 700, marginBottom: '16px' }}>Categorias Mais Acessadas</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {Object.entries(stats.categoryViews || {}).map(([catId, count]) => {
+                      const name = categories.find(c => c.id === catId)?.name || 'Todos os Produtos';
+                      return (
+                        <div key={catId} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 600 }} className="justify-between">
+                            <span>{name}</span>
+                            <span>{count} acessos</span>
+                          </div>
+                          <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--color-admin-input)', borderRadius: '4px', overflow: 'hidden' }}>
+                            <div style={{
+                              width: `${Math.min(100, (count / 150) * 100)}%`,
+                              height: '100%',
+                              backgroundColor: 'var(--color-primary)',
+                              borderRadius: '4px'
+                            }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+            {/* SUBTAB 1.3: HEATMAP SIMULADO */}
+            {dashSubTab === 'heatmap' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="animate-fade">
+                <div style={{
+                  backgroundColor: 'var(--color-admin-card)',
+                  border: '1px solid var(--color-admin-border)',
+                  borderRadius: 'var(--border-radius-theme)',
+                  padding: '20px'
+                }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>Mapa de Calor de Cliques</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', marginBottom: '20px' }}>
+                    Densidade de cliques registrados por região do site na última semana.
+                  </p>
+
+                  {/* Wireframe Mockup da Página */}
+                  <div style={{
+                    maxWidth: '480px',
+                    margin: '0 auto',
+                    backgroundColor: '#ffffff',
+                    color: '#222222',
+                    borderRadius: '16px',
+                    border: '8px solid var(--color-admin-border)',
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}>
+                    {/* Header Mock */}
+                    <div style={{ padding: '14px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', position: 'relative' }} className="justify-between">
+                      <span style={{ fontSize: '11px', fontWeight: 700 }}>Logo / Nome Loja</span>
+                      <span style={{ fontSize: '10px', backgroundColor: '#e2e8f0', padding: '4px 8px', borderRadius: '4px' }}>
+                        Sacola
+                        {/* Thermal dot */}
+                        <span style={{
+                          position: 'absolute',
+                          top: '4px',
+                          right: '6px',
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(255, 183, 3, 0.65)',
+                          color: '#000',
+                          fontSize: '8px',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 0 8px rgba(255, 183, 3, 0.9)'
+                        }} title="Clique no botão do carrinho">
+                          {stats.heatmap['cart-button'] || 45}
+                        </span>
+                      </span>
+                    </div>
+
+                    {/* Banner Hero Mock */}
+                    <div style={{
+                      backgroundColor: 'var(--color-primary)',
+                      color: '#ffffff',
+                      padding: '40px 20px',
+                      textAlign: 'center',
+                      position: 'relative'
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>Título do Banner</div>
+                      <div style={{ width: '80%', height: '18px', backgroundColor: 'rgba(255, 255, 255, 0.9)', borderRadius: '4px', margin: '10px auto 0 auto', position: 'relative' }}>
+                        <span style={{ fontSize: '8px', color: '#999', display: 'block', paddingTop: '3px' }}>Buscar...</span>
+                        {/* Thermal dot */}
+                        <span style={{
+                          position: 'absolute',
+                          top: '-8px',
+                          right: '-8px',
+                          width: '20px',
+                          height: '20px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(46, 196, 182, 0.7)',
+                          color: '#fff',
+                          fontSize: '8px',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 0 10px rgba(46, 196, 182, 0.9)'
+                        }} title="Cliques no Input de Busca">
+                          {stats.heatmap['search-input'] || 95}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Categorias Mock */}
+                    <div style={{ padding: '12px 14px', borderBottom: '1px solid #eee', display: 'flex', gap: '6px', overflow: 'hidden', position: 'relative' }}>
+                      <span style={{ fontSize: '9px', padding: '3px 8px', backgroundColor: '#eee', borderRadius: '10px' }}>Todos</span>
+                      <span style={{ fontSize: '9px', padding: '3px 8px', backgroundColor: '#eee', borderRadius: '10px' }}>Buquês</span>
+                      <span style={{ fontSize: '9px', padding: '3px 8px', backgroundColor: '#eee', borderRadius: '10px' }}>Orquídeas</span>
+                      {/* Thermal dot */}
+                      <span style={{
+                        position: 'absolute',
+                        top: '8px',
+                        left: '40%',
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(230, 57, 70, 0.75)',
+                        color: '#fff',
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 12px rgba(230, 57, 70, 0.9)'
+                      }} title="Cliques nas Categorias">
+                        {stats.heatmap['category-nav'] || 124}
+                      </span>
+                    </div>
+
+                    {/* Grade de Produtos Mock */}
+                    <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', position: 'relative' }}>
+                      <div style={{ border: '1px solid #eee', borderRadius: '6px', padding: '8px' }}>
+                        <div style={{ width: '100%', height: '60px', backgroundColor: '#f1f3f1', borderRadius: '4px' }} />
+                        <div style={{ width: '70%', height: '10px', backgroundColor: '#e2e8f0', margin: '8px 0 4px 0', borderRadius: '2px' }} />
+                        <div style={{ width: '50%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '2px' }} />
+                        <div style={{ width: '100%', height: '18px', backgroundColor: 'var(--color-primary)', marginTop: '8px', borderRadius: '4px', position: 'relative' }}>
+                          {/* Thermal dot */}
+                          <span style={{
+                            position: 'absolute',
+                            top: '-6px',
+                            right: '-6px',
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            backgroundColor: 'rgba(255, 183, 3, 0.7)',
+                            color: '#000',
+                            fontSize: '8px',
+                            fontWeight: 700,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 8px rgba(255, 183, 3, 0.9)'
+                          }} title="Cliques no botão de compra rápida">
+                            {stats.heatmap['buy-button'] || 74}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ border: '1px solid #eee', borderRadius: '6px', padding: '8px', position: 'relative' }}>
+                        <div style={{ width: '100%', height: '60px', backgroundColor: '#f1f3f1', borderRadius: '4px' }} />
+                        <div style={{ width: '70%', height: '10px', backgroundColor: '#e2e8f0', margin: '8px 0 4px 0', borderRadius: '2px' }} />
+                        <div style={{ width: '100%', height: '18px', backgroundColor: 'var(--color-primary)', marginTop: '8px', borderRadius: '4px' }} />
+                        
+                        {/* Thermal dot for Card Detail */}
+                        <span style={{
+                          position: 'absolute',
+                          top: '20px',
+                          left: '20px',
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          backgroundColor: 'rgba(230, 57, 70, 0.8)',
+                          color: '#fff',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 0 12px rgba(230, 57, 70, 0.95)'
+                        }} title="Cliques para abrir Modal de Detalhes">
+                          {stats.heatmap['product-detail'] || 167}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* WhatsApp floating bubble mock */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '16px',
+                      right: '16px',
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      backgroundColor: '#25d366',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 8px rgba(0,0,0,0.15)'
+                    }}>
+                      <span style={{ color: '#fff', fontSize: '11px' }}>💬</span>
+                      {/* Thermal dot */}
+                      <span style={{
+                        position: 'absolute',
+                        top: '-8px',
+                        left: '-8px',
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(255, 183, 3, 0.75)',
+                        color: '#000',
+                        fontSize: '8px',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 0 8px rgba(255, 183, 3, 0.9)'
+                      }} title="Cliques no WhatsApp flutuante">
+                        {stats.heatmap['whatsapp-floating'] || 32}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 1.4: MENSAGENS DO CLIENTE (SUPORTE SIMULADO) */}
+            {dashSubTab === 'messages' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="animate-fade">
+                <div style={{
+                  backgroundColor: 'var(--color-admin-card)',
+                  border: '1px solid var(--color-admin-border)',
+                  borderRadius: 'var(--border-radius-theme)',
+                  padding: '20px'
+                }}>
+                  <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '15px' }}>Mensagens e Dúvidas Recebidas</h3>
+                  {customerMessages.length === 0 ? (
+                    <p style={{ color: 'var(--color-admin-text-muted)', fontSize: '13px' }}>Nenhuma mensagem de suporte recebida ainda.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {customerMessages.map(msg => (
+                        <div
+                          key={msg.id}
+                          style={{
+                            padding: '16px',
+                            backgroundColor: msg.read ? 'transparent' : 'rgba(30, 58, 30, 0.1)',
+                            border: `1px solid ${msg.read ? 'var(--color-admin-border)' : 'var(--color-primary)'}`,
+                            borderRadius: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} className="justify-between">
+                            <span style={{ fontWeight: 700, fontSize: '13px' }}>💬 {msg.name}</span>
+                            <span style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)' }}>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                          <p style={{ fontSize: '13px', color: 'var(--color-admin-text)' }}>{msg.message}</p>
+                          
+                          {!msg.read && (
+                            <button
+                              onClick={() => {
+                                const list = customerMessages.map(m => m.id === msg.id ? { ...m, read: true } : m);
+                                localStorage.setItem('floricultura_customer_messages', JSON.stringify(list));
+                                setCustomerMessages(list);
+                              }}
+                              className="btn btn-sm btn-outline"
+                              style={{ color: 'var(--color-primary)', border: '1px solid var(--color-primary)', marginTop: '8px' }}
+                            >
+                              Marcar como Lida
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
           </div>
         )}
 
         {/* TAB 2: PRODUTOS */}
         {activeTab === 'products' && (
           <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '16px'
-            }}>
-              {/* Barra de Busca de Produtos */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }} className="justify-between">
               <input
                 type="text"
                 placeholder="Pesquise por nome na tabela..."
@@ -647,19 +1142,12 @@ export const AdminDashboard: React.FC = () => {
                   color: 'var(--color-admin-text)'
                 }}
               />
-
               <button className="btn btn-primary" onClick={openNewProductModal}>
                 <Plus size={16} /> Novo Produto
               </button>
             </div>
 
-            {/* Listagem de Produtos / Edição In-line */}
-            <div style={{
-              backgroundColor: 'var(--color-admin-card)',
-              border: '1px solid var(--color-admin-border)',
-              borderRadius: 'var(--border-radius-theme)',
-              overflowX: 'auto'
-            }}>
+            <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text-muted)' }}>
@@ -667,102 +1155,55 @@ export const AdminDashboard: React.FC = () => {
                     <th style={{ padding: '16px' }}>Nome</th>
                     <th style={{ padding: '16px' }}>Preço (In-line)</th>
                     <th style={{ padding: '16px' }}>Estoque (In-line)</th>
-                    <th style={{ padding: '16px' }}>Status / Destaque</th>
-                    <th style={{ padding: '16px', textAlign: 'right' }}>Ações</th>
+                    <th style={{ padding: '16px' }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredProducts.map(p => {
-                    return (
-                      <tr key={p.id} style={{ borderBottom: '1px solid var(--color-admin-border)' }}>
-                        <td style={{ padding: '12px 16px' }}>
-                          <img src={p.images[0]} alt="" style={{ width: '48px', height: '48px', borderRadius: '4px', objectFit: 'cover' }} />
-                        </td>
-                        <td style={{ padding: '12px 16px', fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {p.name}
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ color: 'var(--color-admin-text-muted)' }}>R$</span>
-                            <input
-                              type="number"
-                              defaultValue={p.price || ''}
-                              placeholder="Consulta"
-                              onBlur={(e) => updateProductPriceInline(p.id, e.target.value)}
-                              style={{
-                                width: '80px',
-                                padding: '6px',
-                                borderRadius: '4px',
-                                border: '1px solid var(--color-admin-border)',
-                                backgroundColor: 'var(--color-admin-input)',
-                                color: 'var(--color-admin-text)',
-                                fontSize: '13px'
-                              }}
-                            />
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <input
-                            type="number"
-                            defaultValue={p.stock}
-                            onChange={(e) => updateProductStockInline(p.id, Number(e.target.value))}
-                            style={{
-                              width: '60px',
-                              padding: '6px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--color-admin-border)',
-                              backgroundColor: 'var(--color-admin-input)',
-                              color: 'var(--color-admin-text)',
-                              fontSize: '13px'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'flex', gap: '10px' }}>
-                            <button
-                              onClick={() => toggleProductActive(p.id)}
-                              className={`badge ${p.active ? 'badge-success' : 'badge-danger'}`}
-                              style={{ border: 'none', cursor: 'pointer' }}
-                            >
-                              {p.active ? 'Ativo' : 'Inativo'}
-                            </button>
-                            <button
-                              onClick={() => toggleProductFeatured(p.id)}
-                              className={`badge ${p.featured ? 'badge-primary' : 'badge-secondary'}`}
-                              style={{ border: 'none', cursor: 'pointer', color: p.featured ? '#fff' : 'var(--color-primary)' }}
-                            >
-                              {p.featured ? 'Destaque' : 'Normal'}
-                            </button>
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                            <button
-                              onClick={() => openEditProductModal(p)}
-                              style={{ padding: '6px', color: 'var(--color-admin-text)' }}
-                              title="Editar"
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                            <button
-                              onClick={() => duplicateProduct(p.id)}
-                              style={{ padding: '6px', color: '#9f7aea' }}
-                              title="Duplicar"
-                            >
-                              <Copy size={16} />
-                            </button>
-                            <button
-                              onClick={() => deleteProduct(p.id)}
-                              style={{ padding: '6px', color: 'var(--color-danger)' }}
-                              title="Excluir"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filteredProducts.map(p => (
+                    <tr key={p.id} style={{ borderBottom: '1px solid var(--color-admin-border)' }}>
+                      <td style={{ padding: '12px 16px' }}>
+                        <img src={p.images[0]} alt="" style={{ width: '40px', height: '40px', borderRadius: '4px', objectFit: 'cover' }} />
+                      </td>
+                      <td style={{ padding: '12px 16px', fontWeight: 600 }}>{p.name}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <input
+                          type="number"
+                          defaultValue={p.price || ''}
+                          onBlur={(e) => updateProductPriceInline(p.id, e.target.value)}
+                          style={{
+                            width: '75px',
+                            padding: '6px',
+                            borderRadius: '4px',
+                            backgroundColor: 'var(--color-admin-input)',
+                            color: 'var(--color-admin-text)',
+                            border: '1px solid var(--color-admin-border)'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <input
+                          type="number"
+                          defaultValue={p.stock}
+                          onChange={(e) => updateProductStockInline(p.id, Number(e.target.value))}
+                          style={{
+                            width: '60px',
+                            padding: '6px',
+                            borderRadius: '4px',
+                            backgroundColor: 'var(--color-admin-input)',
+                            color: 'var(--color-admin-text)',
+                            border: '1px solid var(--color-admin-border)'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button onClick={() => openEditProductModal(p)} style={{ color: '#fff' }}><Edit2 size={16} /></button>
+                          <button onClick={() => duplicateProduct(p.id)} style={{ color: '#9f7aea' }}><Copy size={16} /></button>
+                          <button onClick={() => deleteProduct(p.id)} style={{ color: 'var(--color-danger)' }}><Trash2 size={16} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -772,14 +1213,8 @@ export const AdminDashboard: React.FC = () => {
         {/* TAB 3: CATEGORIAS */}
         {activeTab === 'categories' && (
           <div className="animate-fade" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-            {/* Nova Categoria */}
-            <div style={{
-              backgroundColor: 'var(--color-admin-card)',
-              border: '1px solid var(--color-admin-border)',
-              borderRadius: 'var(--border-radius-theme)',
-              padding: '24px'
-            }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>Criar Nova Categoria</h3>
+            <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '24px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px' }}>Criar Nova Categoria</h3>
               <form onSubmit={handleCreateCategory} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div className="form-group">
                   <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome da Categoria</label>
@@ -788,43 +1223,21 @@ export const AdminDashboard: React.FC = () => {
                     value={newCatName}
                     onChange={e => setNewCatName(e.target.value)}
                     className="form-control"
-                    placeholder="Ex: Vasos de Cerâmica"
-                    style={{
-                      backgroundColor: 'var(--color-admin-input)',
-                      borderColor: 'var(--color-admin-border)',
-                      color: 'var(--color-admin-text)'
-                    }}
+                    placeholder="Ex: Cestas Rústicas"
+                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
                   />
                 </div>
                 <button type="submit" className="btn btn-primary">Cadastrar</button>
               </form>
             </div>
 
-            {/* Listagem de Categorias */}
-            <div style={{
-              backgroundColor: 'var(--color-admin-card)',
-              border: '1px solid var(--color-admin-border)',
-              borderRadius: 'var(--border-radius-theme)',
-              padding: '24px'
-            }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>Categorias Cadastradas</h3>
+            <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '24px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px' }}>Categorias Cadastradas</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {categories.map(c => (
-                  <div key={c.id} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'between',
-                    padding: '12px',
-                    border: '1px solid var(--color-admin-border)',
-                    borderRadius: '6px'
-                  }} className="justify-between">
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px', border: '1px solid var(--color-admin-border)', borderRadius: '6px' }} className="justify-between">
                     <span style={{ fontWeight: 600 }}>{c.name}</span>
-                    <button
-                      onClick={() => deleteCategory(c.id)}
-                      style={{ color: 'var(--color-danger)', padding: '4px' }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <button onClick={() => deleteCategory(c.id)} style={{ color: 'var(--color-danger)' }}><Trash2 size={16} /></button>
                   </div>
                 ))}
               </div>
@@ -832,419 +1245,370 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 4: CONFIGURAÇÕES / WHITE-LABEL */}
-        {activeTab === 'settings' && (
-          <div className="animate-fade" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+        {/* TAB 4: EDITOR VISUAL TIPO SHOPIFY */}
+        {activeTab === 'editor' && (
+          <div className="animate-fade" style={{
+            display: 'grid',
+            gridTemplateColumns: '380px 1fr',
+            gap: '24px',
+            alignItems: 'start'
+          }}>
             
-            {/* Informações da Loja */}
+            {/* Editor Painel Esquerda */}
             <div style={{
               backgroundColor: 'var(--color-admin-card)',
               border: '1px solid var(--color-admin-border)',
               borderRadius: 'var(--border-radius-theme)',
-              padding: '24px'
+              padding: '20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              maxHeight: '80vh',
+              overflowY: 'auto'
             }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>Dados do Negócio</h3>
-              <form onSubmit={handleConfigSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
-                <div className="form-group">
-                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome da Floricultura</label>
-                  <input
-                    type="text"
-                    value={configName}
-                    onChange={e => setConfigName(e.target.value)}
-                    className="form-control"
-                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                  />
+              
+              {/* Presets de Temas de 1 Clique */}
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>Presets de Temas (1 Clique)</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {THEME_PRESETS.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => applyPreset(p.id)}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: `1px solid ${configThemePreset === p.id ? 'var(--color-primary)' : 'var(--color-admin-border)'}`,
+                        backgroundColor: configThemePreset === p.id ? 'rgba(30, 58, 30, 0.15)' : 'var(--color-admin-input)',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                      className="justify-between"
+                    >
+                      <span>{p.name}</span>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: p.primary }} />
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: p.secondary }} />
+                      </div>
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                <div className="form-group">
-                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Celular / WhatsApp (código de país incluso)</label>
-                  <input
-                    type="text"
-                    value={configPhone}
-                    onChange={e => setConfigPhone(e.target.value)}
-                    className="form-control"
-                    placeholder="5511999999999"
-                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Endereço Completo</label>
-                  <input
-                    type="text"
-                    value={configAddress}
-                    onChange={e => setConfigAddress(e.target.value)}
-                    className="form-control"
-                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Taxa de Entrega (R$)</label>
-                  <input
-                    type="number"
-                    value={configDeliveryFee}
-                    onChange={e => setConfigDeliveryFee(Number(e.target.value))}
-                    className="form-control"
-                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Horário de Funcionamento</label>
-                  <input
-                    type="text"
-                    value={configWorkingHours}
-                    onChange={e => setConfigWorkingHours(e.target.value)}
-                    className="form-control"
-                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                  />
-                </div>
-
-                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Save size={16} /> Salvar Informações
-                </button>
-              </form>
-            </div>
-
-            {/* Customização Visual (White-Label Theme) */}
-            <div style={{
-              backgroundColor: 'var(--color-admin-card)',
-              border: '1px solid var(--color-admin-border)',
-              borderRadius: 'var(--border-radius-theme)',
-              padding: '24px'
-            }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 700, marginBottom: '16px' }}>Aparência & Identidade Visual</h3>
-              <form onSubmit={handleConfigSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
-                {/* Presets */}
-                <div className="form-group">
-                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Presets de Tema White-Label</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    {THEME_PRESETS.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => applyPreset(p.id)}
-                        style={{
-                          padding: '10px',
-                          border: `1px solid ${configThemePreset === p.id ? 'var(--color-primary)' : 'var(--color-admin-border)'}`,
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          backgroundColor: configThemePreset === p.id ? 'rgba(30, 58, 30, 0.2)' : 'var(--color-admin-input)',
-                          color: '#ffffff',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <span>{p.name}</span>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: p.primary }} />
-                          <span style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: p.secondary }} />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom Pickers */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="form-group">
-                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Cor Primária</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input
-                        type="color"
-                        value={configPrimaryColor}
-                        onChange={e => { setConfigPrimaryColor(e.target.value); setConfigThemePreset('custom'); }}
-                        style={{ width: '36px', height: '36px', border: 'none', cursor: 'pointer', backgroundColor: 'transparent' }}
-                      />
-                      <input
-                        type="text"
-                        value={configPrimaryColor}
-                        onChange={e => { setConfigPrimaryColor(e.target.value); setConfigThemePreset('custom'); }}
-                        className="form-control"
-                        style={{ padding: '4px 8px', fontSize: '12px', backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                      />
+              {/* Ordem das Seções */}
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px' }}>Ordem das Seções da Home</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {configSectionsOrder.map((section, idx) => (
+                    <div
+                      key={section}
+                      style={{
+                        padding: '8px 12px',
+                        backgroundColor: 'var(--color-admin-input)',
+                        border: '1px solid var(--color-admin-border)',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '12px'
+                      }}
+                      className="justify-between"
+                    >
+                      <span style={{ fontWeight: 600 }}>{sectionNamePT(section)}</span>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                          onClick={() => moveSection(idx, 'up')}
+                          disabled={idx === 0}
+                          style={{ padding: '4px', opacity: idx === 0 ? 0.3 : 1 }}
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => moveSection(idx, 'down')}
+                          disabled={idx === configSectionsOrder.length - 1}
+                          style={{ padding: '4px', opacity: idx === configSectionsOrder.length - 1 ? 0.3 : 1 }}
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Customizador de Banner */}
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', borderTop: '1px solid var(--color-admin-border)', paddingTop: '10px' }}>Customizar Banner</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px' }}>Título do Banner</label>
+                    <input
+                      type="text"
+                      value={configBannerTitle}
+                      onChange={e => { setConfigBannerTitle(e.target.value); handleConfigSave(); }}
+                      onBlur={() => handleConfigSave()}
+                      className="form-control"
+                      style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', padding: '8px' }}
+                    />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Cor Secundária</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input
-                        type="color"
-                        value={configSecondaryColor}
-                        onChange={e => { setConfigSecondaryColor(e.target.value); setConfigThemePreset('custom'); }}
-                        style={{ width: '36px', height: '36px', border: 'none', cursor: 'pointer', backgroundColor: 'transparent' }}
-                      />
-                      <input
-                        type="text"
-                        value={configSecondaryColor}
-                        onChange={e => { setConfigSecondaryColor(e.target.value); setConfigThemePreset('custom'); }}
-                        className="form-control"
-                        style={{ padding: '4px 8px', fontSize: '12px', backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                      />
-                    </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px' }}>Subtítulo do Banner</label>
+                    <textarea
+                      value={configBannerSubtitle}
+                      onChange={e => { setConfigBannerSubtitle(e.target.value); handleConfigSave(); }}
+                      onBlur={() => handleConfigSave()}
+                      className="form-control"
+                      rows={2}
+                      style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', padding: '8px', fontSize: '12px' }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px' }}>Imagem de Fundo (Selecione arquivo)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleBannerFileChange}
+                      className="form-control"
+                      style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', padding: '8px' }}
+                    />
                   </div>
                 </div>
+              </div>
 
-                {/* Estilo de Bordas */}
-                <div className="form-group">
-                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Estilo de Bordas (Arredondamento)</label>
+              {/* Customizar Cores & Botões */}
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 700, marginBottom: '10px', borderTop: '1px solid var(--color-admin-border)', paddingTop: '10px' }}>Cores do Cliente</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '10px' }}>Fundo Site</label>
+                    <input
+                      type="color"
+                      value={configBgColor}
+                      onChange={e => { setConfigBgColor(e.target.value); setConfigThemePreset('custom'); handleConfigSave(); }}
+                      style={{ width: '100%', height: '30px', border: 'none', cursor: 'pointer', backgroundColor: 'transparent' }}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '10px' }}>Cor Texto</label>
+                    <input
+                      type="color"
+                      value={configTextColor}
+                      onChange={e => { setConfigTextColor(e.target.value); setConfigThemePreset('custom'); handleConfigSave(); }}
+                      style={{ width: '100%', height: '30px', border: 'none', cursor: 'pointer', backgroundColor: 'transparent' }}
+                    />
+                  </div>
+                </div>
+                <div className="form-group" style={{ marginTop: '10px', marginBottom: 0 }}>
+                  <label className="form-label" style={{ fontSize: '11px' }}>Estilo dos Botões</label>
                   <select
-                    value={configBorderRadius}
-                    onChange={e => setConfigBorderRadius(e.target.value)}
+                    value={configButtonStyle}
+                    onChange={e => { setConfigButtonStyle(e.target.value as any); handleConfigSave(); }}
                     className="form-control"
-                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
+                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', padding: '8px' }}
                   >
-                    <option value="none">Retas (Clássico Rústico)</option>
-                    <option value="sm">Pequeno (4px)</option>
-                    <option value="md">Médio (8px - Padrão Moderno)</option>
-                    <option value="lg">Grande (16px - Minimalista Arrojado)</option>
+                    <option value="rect">Retangulares (Clássico)</option>
+                    <option value="rounded">Bordas Suaves (Padrão)</option>
+                    <option value="pill">Pílula (Arredondado total)</option>
                   </select>
                 </div>
+              </div>
 
-                <button type="submit" className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Save size={16} /> Aplicar Design
-                </button>
-              </form>
+            </div>
 
-              {/* Reset Banco */}
-              <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px dashed var(--color-admin-border)' }}>
-                <h4 style={{ fontSize: '14px', color: 'var(--color-danger)', fontWeight: 700 }}>Zona de Perigo</h4>
-                <p style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', margin: '4px 0 16px 0' }}>
-                  Restaura o catálogo para os dados e temas de demonstração iniciais. Suas modificações serão apagadas.
-                </p>
-                <button className="btn btn-sm btn-danger" onClick={() => { if (confirm('Tem certeza? Isso apagará tudo.')) resetDatabase(); }}>
-                  Restaurar Banco de Demonstração
-                </button>
+            {/* Prévia Shopify-like Iframe (Direita) */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: 'var(--color-admin-card)',
+              border: '1px solid var(--color-admin-border)',
+              borderRadius: 'var(--border-radius-theme)',
+              padding: '24px',
+              height: '80vh',
+              position: 'relative'
+            }} className="justify-center">
+              
+              <div style={{ position: 'absolute', top: '12px', left: '20px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--color-admin-text-muted)' }}>
+                <Smartphone size={14} /> Prévia em Tempo Real (Simulador Mobile)
+              </div>
+
+              {/* Smartphone Frame Wrapper */}
+              <div style={{
+                width: '320px',
+                height: '560px',
+                border: '12px solid #222222',
+                borderRadius: '36px',
+                backgroundColor: '#ffffff',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                position: 'relative',
+                overflow: 'hidden'
+              }}>
+                <iframe
+                  src="/"
+                  title="Preview"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    backgroundColor: '#ffffff'
+                  }}
+                  id="preview-iframe"
+                  key={JSON.stringify(config)} // Força recarregamento do iframe ao salvar configs
+                />
               </div>
             </div>
 
           </div>
         )}
+
+        {/* TAB 5: CONFIGURAÇÕES GERAIS */}
+        {activeTab === 'settings' && (
+          <div className="animate-fade" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+            <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '24px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px' }}>Dados do Negócio</h3>
+              <form onSubmit={handleConfigSave} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome da Floricultura</label>
+                  <input type="text" value={configName} onChange={e => setConfigName(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>WhatsApp</label>
+                  <input type="text" value={configPhone} onChange={e => setConfigPhone(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Endereço Completo</label>
+                  <input type="text" value={configAddress} onChange={e => setConfigAddress(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Taxa de Entrega (R$)</label>
+                  <input type="number" value={configDeliveryFee} onChange={e => setConfigDeliveryFee(Number(e.target.value))} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Horário de Funcionamento</label>
+                  <input type="text" value={configWorkingHours} onChange={e => setConfigWorkingHours(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <button type="submit" className="btn btn-primary"><Save size={16} /> Salvar Dados</button>
+              </form>
+            </div>
+
+            <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '24px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px', color: 'var(--color-danger)' }}>Ações do Desenvolvedor</h3>
+              <p style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', marginBottom: '16px' }}>
+                Utilize as ferramentas abaixo para reinstalar as configurações de teste e redefinir o banco local.
+              </p>
+              <button
+                className="btn btn-danger btn-full"
+                onClick={() => {
+                  if (confirm('Atenção: Isso redefinirá todas as informações, produtos e estatísticas do catálogo. Prosseguir?')) {
+                    resetDatabase();
+                    window.location.reload();
+                  }
+                }}
+              >
+                Limpar & Restaurar Banco Mock
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
 
-      {/* MODAL: FORMULÁRIO PRODUTO (NOVO / EDICÃO) */}
+      {/* MODAL CADASTRAR / EDITAR PRODUTO */}
       {isProductModalOpen && (
         <div className="modal-overlay animate-fade" onClick={() => setIsProductModalOpen(false)}>
           <div
             className="modal-content animate-scale"
             onClick={e => e.stopPropagation()}
             style={{
-              maxWidth: '650px',
+              maxWidth: '600px',
               backgroundColor: 'var(--color-admin-card)',
               border: '1px solid var(--color-admin-border)',
               color: 'var(--color-admin-text)'
             }}
           >
             <div className="modal-header" style={{ borderColor: 'var(--color-admin-border)' }}>
-              <h2 className="text-base font-bold">
-                {editingProduct ? `Editar: ${editingProduct.name}` : 'Cadastrar Novo Produto'}
-              </h2>
+              <h2 className="text-base font-bold">{editingProduct ? 'Editar Produto' : 'Novo Produto'}</h2>
               <button className="modal-close" onClick={() => setIsProductModalOpen(false)} style={{ backgroundColor: 'var(--color-admin-input)' }}>
                 <X size={20} />
               </button>
             </div>
-            
             <form onSubmit={handleProductSubmit}>
               <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  
-                  {/* Nome e Categoria */}
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
                     <div className="form-group">
-                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome do Produto*</label>
-                      <input
-                        type="text"
-                        required
-                        value={prodName}
-                        onChange={e => setProdName(e.target.value)}
-                        className="form-control"
-                        placeholder="Ex: Buquê de Girassol"
-                        style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                      />
+                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome*</label>
+                      <input type="text" required value={prodName} onChange={e => setProdName(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Categoria*</label>
-                      <select
-                        value={prodCategory}
-                        onChange={e => setProdCategory(e.target.value)}
-                        className="form-control"
-                        style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                      >
-                        {categories.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
+                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Categoria</label>
+                      <select value={prodCategory} onChange={e => setProdCategory(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
                   </div>
 
-                  {/* Preços e Estoque */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                     <div className="form-group">
                       <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Preço (R$)*</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={prodPrice === null ? '' : prodPrice}
-                        onChange={e => setProdPrice(e.target.value === '' ? null : Number(e.target.value))}
-                        className="form-control"
-                        placeholder="Consulta se em branco"
-                        style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                      />
+                      <input type="number" step="0.01" value={prodPrice === null ? '' : prodPrice} onChange={e => setProdPrice(e.target.value === '' ? null : Number(e.target.value))} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Preço Promo (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={prodPromoPrice === null ? '' : prodPromoPrice}
-                        onChange={e => setProdPromoPrice(e.target.value === '' ? null : Number(e.target.value))}
-                        className="form-control"
-                        placeholder="Sem promoção se em branco"
-                        style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                      />
+                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Preço Promo</label>
+                      <input type="number" step="0.01" value={prodPromoPrice === null ? '' : prodPromoPrice} onChange={e => setProdPromoPrice(e.target.value === '' ? null : Number(e.target.value))} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Qtd Estoque*</label>
-                      <input
-                        type="number"
-                        required
-                        value={prodStock}
-                        onChange={e => setProdStock(Number(e.target.value))}
-                        className="form-control"
-                        style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
-                      />
+                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Estoque*</label>
+                      <input type="number" required value={prodStock} onChange={e => setProdStock(Number(e.target.value))} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
                     </div>
                   </div>
 
-                  {/* Descrição */}
                   <div className="form-group">
-                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Descrição Detalhada*</label>
-                    <textarea
-                      required
-                      value={prodDesc}
-                      onChange={e => setProdDesc(e.target.value)}
-                      className="form-control"
-                      rows={3}
-                      placeholder="Descreva as flores, cores, embalagem, tamanho..."
-                      style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', resize: 'vertical' }}
-                    />
+                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Descrição*</label>
+                    <textarea required value={prodDesc} onChange={e => setProdDesc(e.target.value)} className="form-control" rows={3} style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
                   </div>
 
-                  {/* Destaque e Mais Vendido checkboxes */}
                   <div style={{ display: 'flex', gap: '20px' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={prodFeatured}
-                        onChange={e => setProdFeatured(e.target.checked)}
-                      />
-                      Destacar na Página Inicial
+                      <input type="checkbox" checked={prodFeatured} onChange={e => setProdFeatured(e.target.checked)} />
+                      Destaque
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={prodBestSeller}
-                        onChange={e => setProdBestSeller(e.target.checked)}
-                      />
-                      Marcar como Mais Vendido
+                      <input type="checkbox" checked={prodBestSeller} onChange={e => setProdBestSeller(e.target.checked)} />
+                      Mais Vendido
                     </label>
                   </div>
 
-                  {/* Arrastar e Soltar Fotos (Drag & Drop) */}
                   <div className="form-group">
-                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Fotos do Produto (Arraste ou Selecione)</label>
-                    <div
-                      onDragEnter={handleDrag}
-                      onDragOver={handleDrag}
-                      onDragLeave={handleDrag}
-                      onDrop={handleDrop}
-                      style={{
-                        border: `2px dashed ${dragActive ? 'var(--color-primary)' : 'var(--color-admin-border)'}`,
-                        borderRadius: 'var(--border-radius-theme)',
-                        padding: '24px',
-                        textAlign: 'center',
-                        backgroundColor: dragActive ? 'rgba(30, 58, 30, 0.2)' : 'var(--color-admin-input)',
-                        cursor: 'pointer',
-                        position: 'relative',
-                        transition: 'var(--transition-fast)'
-                      }}
-                    >
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          height: '100%',
-                          opacity: 0,
-                          cursor: 'pointer'
-                        }}
-                      />
-                      <ImageIcon size={32} style={{ color: 'var(--color-admin-text-muted)', marginBottom: '8px' }} />
-                      <p style={{ fontSize: '13px', fontWeight: 500 }}>
-                        Arraste fotos aqui ou <span style={{ color: '#9f7aea', textDecoration: 'underline' }}>procure arquivos</span>
-                      </p>
-                      <p style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', marginTop: '4px' }}>
-                        Suporta PNG, JPG (as fotos serão salvas localmente)
-                      </p>
-                    </div>
-
-                    {/* Previa das Fotos carregadas */}
+                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Adicionar Foto (Upload)</label>
+                    <input type="file" accept="image/*" onChange={handleFileChange} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', padding: '8px' }} />
                     {prodImages.length > 0 && (
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                         {prodImages.map((img, idx) => (
-                          <div key={idx} style={{ position: 'relative', width: '60px', height: '60px', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--color-admin-border)' }}>
+                          <div key={idx} style={{ position: 'relative', width: '50px', height: '50px', borderRadius: '4px', overflow: 'hidden' }}>
                             <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            <button
-                              type="button"
-                              onClick={() => removeImage(idx)}
-                              style={{
-                                position: 'absolute',
-                                top: '2px',
-                                right: '2px',
-                                backgroundColor: 'rgba(0,0,0,0.6)',
-                                color: '#fff',
-                                width: '16px',
-                                height: '16px',
-                                borderRadius: '50%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 0
-                              }}
-                            >
-                              <X size={10} />
-                            </button>
+                            <button type="button" onClick={() => setProdImages(prev => prev.filter((_, i) => i !== idx))} style={{ position: 'absolute', top: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', color: '#fff', border: 'none', borderRadius: '50%', width: '16px', height: '16px', fontSize: '10px', padding: 0 }}>X</button>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-
                 </div>
               </div>
               <div className="modal-footer" style={{ borderColor: 'var(--color-admin-border)' }}>
-                <button type="button" className="btn btn-outline" style={{ color: 'var(--color-admin-text)' }} onClick={() => setIsProductModalOpen(false)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingProduct ? 'Salvar Alterações' : 'Cadastrar Produto'}
-                </button>
+                <button type="button" className="btn btn-outline" style={{ color: 'var(--color-admin-text)' }} onClick={() => setIsProductModalOpen(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">Salvar</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
     </div>
   );
 };

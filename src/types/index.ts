@@ -56,9 +56,32 @@ export interface BusinessConfig {
   logo: string; // Base64 or standard logo URL
   primaryColor: string;
   secondaryColor: string;
-  themePreset: string; // 'forest-green' | 'elegant-rose' | 'modern-lavender' | 'tropical-orchid' | 'custom'
+  themePreset: string; // 'elegance' | 'garden-modern' | 'minimal' | 'premium' | 'dark' | 'luxury' | 'natural' | 'custom'
   borderRadius: string; // 'sm' | 'md' | 'lg' | 'none'
   catalogViews: number;
+  
+  // Customização Visual (Shopify-like Builder)
+  bannerTitle: string;
+  bannerSubtitle: string;
+  bannerImage: string; // URL ou Base64 do banner
+  bannerBtnText: string;
+  buttonStyle: 'rect' | 'rounded' | 'pill';
+  backgroundColor: string; // Fundo do site
+  textColor: string; // Texto geral
+  sectionsOrder: string[]; // Ex: ['hero', 'categories', 'featured', 'bestsellers', 'catalog']
+}
+
+export interface AnalyticsEvent {
+  id: string;
+  type: 'access' | 'click_whatsapp' | 'product_view' | 'category_view';
+  timestamp: string; // ISO String
+  source: 'google' | 'instagram' | 'facebook' | 'qrcode' | 'direct';
+  targetId?: string; // ID do produto, categoria, etc.
+}
+
+export interface HeatmapClick {
+  elementId: string;
+  count: number;
 }
 
 export interface DashboardStats {
@@ -66,8 +89,26 @@ export interface DashboardStats {
   promoProducts: number;
   outOfStockProducts: number;
   mostViewedProducts: Product[];
+  leastViewedProducts: Product[]; // Produto menos visto
   bestSellers: Product[];
   recentOrders: Order[];
   monthlyRevenue: number;
   catalogViews: number;
+  
+  // Gráficos Comerciais & Analytics
+  ordersTodayCount: number;
+  ordersWeekCount: number;
+  whatsappClicksCount: number;
+  conversionRate: number; // Taxa de conversão
+  sources: {
+    google: number;
+    instagram: number;
+    facebook: number;
+    qrcode: number;
+    direct: number;
+  };
+  categoryViews: Record<string, number>; // Categoria -> visualizações
+  hourlyViews: Record<number, number>; // Hora do dia (0-23) -> visualizações
+  avgTimeOnPage: number; // Tempo médio na página em segundos
+  heatmap: Record<string, number>; // ElementID -> contagem de cliques
 }

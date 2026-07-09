@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+
+Sitemap: https://github.com/mslol21/floricultura_konnext/sitemap.xml

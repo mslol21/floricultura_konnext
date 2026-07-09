@@ -33,6 +33,19 @@ export const applyTheme = (config: BusinessConfig) => {
   root.style.setProperty('--color-primary', config.primaryColor);
   root.style.setProperty('--color-secondary', config.secondaryColor);
   
+  // Customizações do Editor Visual
+  root.style.setProperty('--color-bg-body', config.backgroundColor || '#f7f9f7');
+  root.style.setProperty('--color-text', config.textColor || '#2c3e2c');
+  
+  // Font Family por tema
+  let font = "'Inter', sans-serif";
+  if (config.themePreset === 'elegance' || config.themePreset === 'luxury') {
+    font = "'Playfair Display', 'Georgia', serif";
+  } else if (config.themePreset === 'minimal') {
+    font = "'Courier New', Courier, monospace";
+  }
+  root.style.setProperty('--font-family', font);
+  
   // Bordas arredondadas
   let radius = '8px';
   if (config.borderRadius === 'none') radius = '0px';
@@ -40,20 +53,28 @@ export const applyTheme = (config: BusinessConfig) => {
   if (config.borderRadius === 'md') radius = '8px';
   if (config.borderRadius === 'lg') radius = '16px';
   root.style.setProperty('--border-radius-theme', radius);
+
+  // Formato do Botão
+  let btnRadius = radius;
+  if (config.buttonStyle === 'rect') btnRadius = '0px';
+  if (config.buttonStyle === 'rounded') btnRadius = '8px';
+  if (config.buttonStyle === 'pill') btnRadius = '9999px';
+  root.style.setProperty('--border-radius-button', btnRadius);
 };
 
 export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Inicializa o banco de dados
+  // Inicializa o banco de dados e registra acesso
   useEffect(() => {
     dbService.init();
     dbService.incrementCatalogViews();
+    dbService.logEvent('access', document.referrer);
   }, []);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [config, setConfig] = useState<BusinessConfig>(dbService.getConfig());
   
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategoryState] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Carrinho
@@ -63,7 +84,32 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
   
   const [checkoutStep, setCheckoutStep] = useState(1);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedProduct, setSelectedProductState] = useState<Product | null>(null);
+
+  // Wrappers com log de eventos analíticos e SEO dinâmico
+  const setSelectedCategory = (id: string | null) => {
+    setSelectedCategoryState(id);
+    if (id) {
+      dbService.logEvent('category_view', undefined, id);
+      dbService.logHeatmapClick('category-nav');
+    }
+  };
+
+  const setSelectedProduct = (product: Product | null) => {
+    setSelectedProductState(product);
+    if (product) {
+      dbService.incrementProductViews(product.id);
+      dbService.logEvent('product_view', undefined, product.id);
+      dbService.logHeatmapClick('product-detail');
+      import('../utils/seo').then(seo => {
+        seo.updateSEOMetaTags(product, config);
+      });
+    } else {
+      import('../utils/seo').then(seo => {
+        seo.updateSEOMetaTags(null, config);
+      });
+    }
+  };
 
   // Sincronizar carrinho com LocalStorage
   useEffect(() => {
@@ -80,6 +126,11 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setCategories(activeCategories);
     setConfig(businessConfig);
     applyTheme(businessConfig);
+    
+    // Inicializar metatags SEO padrão
+    import('../utils/seo').then(seo => {
+      seo.updateSEOMetaTags(null, businessConfig);
+    });
   };
 
   useEffect(() => {
@@ -189,6 +240,10 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Salvar no "banco"
     dbService.createOrder(newOrder);
+    
+    // Log de Conversão e Heatmap
+    dbService.logEvent('click_whatsapp', undefined, 'checkout-finish');
+    dbService.logHeatmapClick('checkout-finish');
 
     // Formatar mensagem do WhatsApp
     let text = `🌸 *NOVO PEDIDO - ${config.name}* 🌸\n`;
