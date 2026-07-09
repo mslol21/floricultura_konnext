@@ -50,11 +50,11 @@ export const Catalog: React.FC = () => {
     <div style={{ paddingBottom: '60px' }}>
       {/* Banner / Hero Section */}
       <section style={{
-        backgroundImage: `linear-gradient(135deg, rgba(0, 0, 0, 0.65) 0%, rgba(0, 0, 0, 0.85) 100%), url('https://images.unsplash.com/photo-1596436889106-be35e843f974?auto=format&fit=crop&w=1200&q=80')`,
+        backgroundImage: `linear-gradient(135deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0.75) 100%), url('/florist_banner.png')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         color: '#ffffff',
-        padding: '75px 0 85px 0',
+        padding: '90px 0 100px 0',
         textAlign: 'center',
         position: 'relative',
         overflow: 'hidden'
@@ -86,12 +86,14 @@ export const Catalog: React.FC = () => {
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            backgroundColor: '#ffffff',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
             borderRadius: 'var(--border-radius-theme)',
             padding: '4px 8px 4px 16px',
-            boxShadow: 'var(--shadow-lg)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
             maxWidth: '550px',
-            margin: '0 auto'
+            margin: '0 auto',
+            border: '1px solid rgba(255, 255, 255, 0.2)'
           }}>
             <Search size={18} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
             <input
@@ -141,8 +143,10 @@ export const Catalog: React.FC = () => {
                 fontSize: '13px',
                 fontWeight: 600,
                 flexShrink: 0,
-                backgroundColor: selectedCategory === null ? 'var(--color-primary)' : 'var(--color-bg-input)',
+                backgroundColor: selectedCategory === null ? 'var(--color-primary)' : '#ffffff',
                 color: selectedCategory === null ? '#ffffff' : 'var(--color-text-muted)',
+                border: selectedCategory === null ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                boxShadow: selectedCategory === null ? '0 4px 12px rgba(30, 58, 30, 0.15)' : 'var(--shadow-sm)',
                 transition: 'var(--transition-fast)'
               }}
             >
@@ -160,8 +164,10 @@ export const Catalog: React.FC = () => {
                   fontSize: '13px',
                   fontWeight: 600,
                   flexShrink: 0,
-                  backgroundColor: selectedCategory === cat.id ? 'var(--color-primary)' : 'var(--color-bg-input)',
+                  backgroundColor: selectedCategory === cat.id ? 'var(--color-primary)' : '#ffffff',
                   color: selectedCategory === cat.id ? '#ffffff' : 'var(--color-text-muted)',
+                  border: selectedCategory === cat.id ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+                  boxShadow: selectedCategory === cat.id ? '0 4px 12px rgba(30, 58, 30, 0.15)' : 'var(--shadow-sm)',
                   transition: 'var(--transition-fast)'
                 }}
               >
