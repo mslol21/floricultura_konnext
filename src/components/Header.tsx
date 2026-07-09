@@ -26,12 +26,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCart, onOpenAdmin, isAdmin
 
   return (
     <header style={{
-      backgroundColor: isAdminView ? 'var(--color-admin-card)' : 'var(--color-bg-card)',
-      borderBottom: `1px solid ${isAdminView ? 'var(--color-admin-border)' : 'var(--color-border)'}`,
+      backgroundColor: isAdminView ? 'var(--color-admin-card)' : 'rgba(255, 255, 255, 0.88)',
+      backdropFilter: isAdminView ? 'none' : 'blur(12px)',
+      borderBottom: `1px solid ${isAdminView ? 'var(--color-admin-border)' : 'rgba(226, 232, 226, 0.6)'}`,
       position: 'sticky',
       top: 0,
       zIndex: 100,
-      padding: '16px 0',
+      padding: '12px 0',
+      boxShadow: isAdminView ? 'none' : '0 4px 20px rgba(0, 0, 0, 0.02)',
       transition: 'var(--transition-normal)'
     }}>
       <div className="container flex items-center justify-between">
@@ -40,13 +42,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCart, onOpenAdmin, isAdmin
           <div style={{
             backgroundColor: 'var(--color-primary)',
             color: '#ffffff',
-            width: '40px',
-            height: '40px',
+            width: '42px',
+            height: '42px',
             borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: 'var(--shadow-sm)'
+            boxShadow: '0 2px 8px rgba(30, 58, 30, 0.15)',
+            border: isAdminView ? 'none' : '2px solid var(--color-secondary)'
           }} className="justify-center">
             {config.logo ? (
               <img src={config.logo} alt={config.name} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
@@ -68,16 +71,29 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCart, onOpenAdmin, isAdmin
               {isAdminView && <span className="badge badge-warning" style={{ fontSize: '9px', padding: '2px 6px' }}>Painel</span>}
             </h1>
             {!isAdminView && (
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-1.5 mt-0.5">
                 <span style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  backgroundColor: open ? 'var(--color-success)' : 'var(--color-danger)',
-                  display: 'inline-block'
-                }}></span>
-                <span className="text-xs text-muted" style={{ fontWeight: 500 }}>
-                  {open ? 'Loja Aberta' : 'Loja Fechada'} • {config.workingHours}
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  backgroundColor: open ? 'rgba(46, 196, 182, 0.1)' : 'rgba(230, 57, 70, 0.1)',
+                  color: open ? 'var(--color-success)' : 'var(--color-danger)'
+                }}>
+                  <span style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: 'currentColor',
+                    display: 'inline-block'
+                  }}></span>
+                  {open ? 'Loja Aberta' : 'Loja Fechada'}
+                </span>
+                <span className="text-xs text-muted" style={{ fontWeight: 500, marginLeft: '4px' }}>
+                  • {config.workingHours}
                 </span>
               </div>
             )}

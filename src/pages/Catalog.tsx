@@ -120,6 +120,39 @@ export const Catalog: React.FC = () => {
               </button>
             )}
           </div>
+
+          {/* Sugestões de Busca */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            marginTop: '16px',
+            fontSize: '12px',
+            color: 'rgba(255, 255, 255, 0.8)',
+            flexWrap: 'wrap'
+          }}>
+            <span>Sugestões:</span>
+            {['Rosas', 'Orquídeas', 'Cestas', 'Suculentas'].map((term) => (
+              <button
+                key={term}
+                onClick={() => setSearchQuery(term)}
+                style={{
+                  color: '#ffffff',
+                  backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'var(--transition-fast)'
+                }}
+                className="hover-scale"
+              >
+                {term}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
