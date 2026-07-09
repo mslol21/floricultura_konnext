@@ -1,4 +1,4 @@
-import type { Product, Category, Order, BusinessConfig, DashboardStats, AnalyticsEvent } from '../types';
+import type { Product, Category, Order, BusinessConfig, DashboardStats, AnalyticsEvent, Role, RolePermissions, UserProfile } from '../types';
 
 // Chaves do LocalStorage
 const KEYS = {
@@ -7,7 +7,9 @@ const KEYS = {
   ORDERS: 'floricultura_orders',
   CONFIG: 'floricultura_config',
   EVENTS: 'floricultura_events',
+  USERS: 'floricultura_users',
 };
+
 
 // Sementes de Categorias
 const DEFAULT_CATEGORIES: Category[] = [
@@ -154,6 +156,74 @@ const DEFAULT_PRODUCTS: Product[] = [
   }
 ];
 
+// Permissões padrão para cada papel/perfil
+const DEFAULT_ROLE_PERMISSIONS: Record<Role, RolePermissions> = {
+  owner: {
+    viewDashboard: true,
+    manageProducts: true,
+    manageCategories: true,
+    manageOrders: true,
+    manageChat: true,
+    manageEditor: true,
+    useAiTools: true,
+  },
+  manager: {
+    viewDashboard: true,
+    manageProducts: true,
+    manageCategories: true,
+    manageOrders: true,
+    manageChat: true,
+    manageEditor: true,
+    useAiTools: true,
+  },
+  staff: {
+    viewDashboard: false,
+    manageProducts: true,
+    manageCategories: false,
+    manageOrders: true,
+    manageChat: false,
+    manageEditor: false,
+    useAiTools: false,
+  },
+  stock: {
+    viewDashboard: false,
+    manageProducts: true, // Estoquista vê produtos e altera estoque in-line
+    manageCategories: false,
+    manageOrders: false,
+    manageChat: false,
+    manageEditor: false,
+    useAiTools: false,
+  },
+  support: {
+    viewDashboard: false,
+    manageProducts: false,
+    manageCategories: false,
+    manageOrders: true,
+    manageChat: true,
+    manageEditor: false,
+    useAiTools: false,
+  },
+  marketing: {
+    viewDashboard: true,
+    manageProducts: false,
+    manageCategories: true,
+    manageOrders: false,
+    manageChat: false,
+    manageEditor: true,
+    useAiTools: true,
+  },
+};
+
+// Usuários predefinidos para login
+const DEFAULT_USERS = [
+  { username: 'dono', password: 'dono', role: 'owner' as Role, name: 'Proprietário Floricultura' },
+  { username: 'gerente', password: 'gerente', role: 'manager' as Role, name: 'Juliana Santos' },
+  { username: 'funcionario', password: 'funcionario', role: 'staff' as Role, name: 'Pedro Alves' },
+  { username: 'estoquista', password: 'estoquista', role: 'stock' as Role, name: 'Carlos Depósito' },
+  { username: 'atendimento', password: 'atendimento', role: 'support' as Role, name: 'Mariana Linha' },
+  { username: 'marketing', password: 'marketing', role: 'marketing' as Role, name: 'Thiago Redes' },
+];
+
 // Sementes de Configurações do Negócio
 const DEFAULT_CONFIG: BusinessConfig = {
   name: 'Konnexy Flores',
@@ -176,8 +246,10 @@ const DEFAULT_CONFIG: BusinessConfig = {
   buttonStyle: 'rounded',
   backgroundColor: '#f7f9f7',
   textColor: '#2c3e2c',
-  sectionsOrder: ['hero', 'categories', 'featured', 'bestsellers', 'catalog']
+  sectionsOrder: ['hero', 'categories', 'featured', 'bestsellers', 'catalog'],
+  rolePermissions: DEFAULT_ROLE_PERMISSIONS,
 };
+
 
 // Sementes de Pedidos para alimentar o Dashboard
 const DEFAULT_ORDERS: Order[] = [
@@ -322,6 +394,7 @@ export const dbService = {
     getStorageItem(KEYS.PRODUCTS, DEFAULT_PRODUCTS);
     getStorageItem(KEYS.ORDERS, DEFAULT_ORDERS);
     getStorageItem(KEYS.EVENTS, generateMockEvents());
+    getStorageItem(KEYS.USERS, DEFAULT_USERS);
   },
 
   // Reset do Banco
@@ -331,8 +404,45 @@ export const dbService = {
     localStorage.removeItem(KEYS.PRODUCTS);
     localStorage.removeItem(KEYS.ORDERS);
     localStorage.removeItem(KEYS.EVENTS);
+    localStorage.removeItem(KEYS.USERS);
     this.init();
   },
+
+  // --- USUÁRIOS E PERMISSÕES ---
+  getUsers(): any[] {
+    return getStorageItem(KEYS.USERS, DEFAULT_USERS);
+  },
+
+  saveUser(user: any): void {
+    const users = this.getUsers();
+    const index = users.findIndex(u => u.username === user.username);
+    if (index >= 0) {
+      users[index] = user;
+    } else {
+      users.push(user);
+    }
+    setStorageItem(KEYS.USERS, users);
+  },
+
+  deleteUser(username: string): void {
+    const users = this.getUsers();
+    const filtered = users.filter(u => u.username !== username);
+    setStorageItem(KEYS.USERS, filtered);
+  },
+
+  validateUser(username: string, password: string): UserProfile | null {
+    const users = this.getUsers();
+    const found = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+    if (found) {
+      return {
+        username: found.username,
+        name: found.name,
+        role: found.role
+      };
+    }
+    return null;
+  },
+
 
   // --- PRODUTOS ---
   getProducts(includeInactive = false): Product[] {

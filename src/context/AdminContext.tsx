@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { Product, Category, BusinessConfig, Order, DashboardStats } from '../types';
+import type { Product, Category, BusinessConfig, Order, DashboardStats, UserProfile } from '../types';
 import { dbService } from '../services/db';
 
 interface AdminContextType {
   isLoggedIn: boolean;
-  login: (password: string) => boolean;
+  login: (username: string, password: string) => boolean;
   logout: () => void;
+  currentUser: UserProfile | null;
+  users: any[];
+  saveUser: (user: any) => void;
+  deleteUser: (username: string) => void;
   products: Product[];
   categories: Category[];
   orders: Order[];
@@ -26,8 +30,13 @@ interface AdminContextType {
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
 export const AdminProvider: React.FC<{ children: React.ReactNode; onRefreshCatalog: () => void }> = ({ children, onRefreshCatalog }) => {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    const saved = localStorage.getItem('floricultura_admin_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('floricultura_admin_session') === 'true';
+    return localStorage.getItem('floricultura_admin_session') === 'true' && localStorage.getItem('floricultura_admin_user') !== null;
   });
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -36,6 +45,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; onRefreshCatal
   const [config, setConfig] = useState<BusinessConfig>(dbService.getConfig());
   const [stats, setStats] = useState<DashboardStats>(dbService.getDashboardStats());
   const [lowStockAlerts, setLowStockAlerts] = useState<Product[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
 
   const refreshAdmin = () => {
     const allProducts = dbService.getProducts(true);
@@ -43,12 +53,14 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; onRefreshCatal
     const allOrders = dbService.getOrders();
     const currentConfig = dbService.getConfig();
     const currentStats = dbService.getDashboardStats();
+    const allUsers = dbService.getUsers();
 
     setProducts(allProducts);
     setCategories(allCategories);
     setOrders(allOrders);
     setConfig(currentConfig);
     setStats(currentStats);
+    setUsers(allUsers);
 
     // Alerta de estoque baixo (< 3)
     const lowStock = allProducts.filter(p => p.active && p.stock <= 3);
@@ -64,10 +76,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; onRefreshCatal
     }
   }, [isLoggedIn]);
 
-  const login = (password: string): boolean => {
-    // Senha padrão simples: admin
-    if (password === 'admin') {
+  const login = (username: string, password: string): boolean => {
+    const profile = dbService.validateUser(username, password);
+    if (profile) {
       localStorage.setItem('floricultura_admin_session', 'true');
+      localStorage.setItem('floricultura_admin_user', JSON.stringify(profile));
+      setCurrentUser(profile);
       setIsLoggedIn(true);
       return true;
     }
@@ -76,6 +90,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; onRefreshCatal
 
   const logout = () => {
     localStorage.removeItem('floricultura_admin_session');
+    localStorage.removeItem('floricultura_admin_user');
+    setCurrentUser(null);
     setIsLoggedIn(false);
   };
 
@@ -125,6 +141,16 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; onRefreshCatal
     refreshAdmin();
   };
 
+  const handleSaveUser = (user: any) => {
+    dbService.saveUser(user);
+    refreshAdmin();
+  };
+
+  const handleDeleteUser = (username: string) => {
+    dbService.deleteUser(username);
+    refreshAdmin();
+  };
+
   const resetDatabase = () => {
     dbService.reset();
     refreshAdmin();
@@ -135,6 +161,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode; onRefreshCatal
       isLoggedIn,
       login,
       logout,
+      currentUser,
+      users,
+      saveUser: handleSaveUser,
+      deleteUser: handleDeleteUser,
       products,
       categories,
       orders,

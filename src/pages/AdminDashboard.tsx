@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../context/AdminContext';
-import type { Product, Category, BusinessConfig } from '../types';
+import type { Product, Category, BusinessConfig, Role, RolePermissions } from '../types';
+import { aiSimulator } from '../utils/aiSimulator';
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -19,8 +20,12 @@ import {
   Monitor,
   Clock,
   Sparkles,
-  Smartphone
+  Smartphone,
+  UserPlus,
+  Camera,
+  Check
 } from 'lucide-react';
+
 
 // Função para gerar beeps sonoros de notificação usando a Web Audio API
 const playNotificationSound = () => {
@@ -72,7 +77,11 @@ export const AdminDashboard: React.FC = () => {
     updateOrderStatus,
     resetDatabase,
     lowStockAlerts,
-    refreshAdmin
+    refreshAdmin,
+    currentUser,
+    users,
+    saveUser,
+    deleteUser
   } = useAdmin();
 
   // Abas do Painel
@@ -101,8 +110,222 @@ export const AdminDashboard: React.FC = () => {
   // Busca interna de produtos
   const [prodSearchQuery, setProdSearchQuery] = useState('');
 
-  // Mensagens de suporte recebidas
   const [customerMessages, setCustomerMessages] = useState<any[]>([]);
+
+  // --- ESTADOS E AUXILIARES DE IA & PERMISSÕES ---
+  const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
+  const [aiTone, setAiTone] = useState('commercial');
+  
+  // Controle de Permissões
+  const [selectedRoleForPerms, setSelectedRoleForPerms] = useState<Role>('manager');
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [newUserRole, setNewUserRole] = useState<Role>('staff');
+
+  // Instagram Marketing Modal
+  const [instagramModalOpen, setInstagramModalOpen] = useState(false);
+  const [instagramProduct, setInstagramProduct] = useState<Product | null>(null);
+  const [instagramCaption, setInstagramCaption] = useState('');
+  const [instagramHashtags, setInstagramHashtags] = useState<string[]>([]);
+  const [isCopied, setIsCopied] = useState(false);
+
+  // Chat/Auto-responder suggestion
+  const [selectedMsgForAi, setSelectedMsgForAi] = useState<string | null>(null);
+  const [aiChatDraft, setAiChatDraft] = useState('');
+
+  // Obter permissões do perfil ativo
+  const getPermissions = (): RolePermissions => {
+    const role = currentUser?.role || 'owner';
+    const permissions = config.rolePermissions?.[role] || {
+      viewDashboard: true,
+      manageProducts: true,
+      manageCategories: true,
+      manageOrders: true,
+      manageChat: true,
+      manageEditor: true,
+      useAiTools: true
+    };
+    return permissions;
+  };
+
+  const perms = getPermissions();
+
+  const getRoleLabel = (role?: string) => {
+    const labels: Record<string, string> = {
+      owner: 'Proprietário',
+      manager: 'Gerente',
+      staff: 'Funcionário',
+      stock: 'Estoquista',
+      support: 'Atendimento',
+      marketing: 'Marketing'
+    };
+    return labels[role || ''] || 'Indefinido';
+  };
+
+  // Garante que o usuário navegue para uma aba permitida
+  useEffect(() => {
+    const tabChecks = {
+      dashboard: perms.viewDashboard || perms.manageOrders || perms.manageChat,
+      products: perms.manageProducts,
+      categories: perms.manageCategories,
+      editor: perms.manageEditor,
+      settings: currentUser?.role === 'owner' || currentUser?.role === 'manager'
+    };
+
+    if (!tabChecks[activeTab]) {
+      const firstPermitted = Object.keys(tabChecks).find(tab => tabChecks[tab as keyof typeof tabChecks]) as any;
+      if (firstPermitted) {
+        setActiveTab(firstPermitted);
+      }
+    }
+  }, [currentUser, config.rolePermissions, activeTab]);
+
+  // Handlers para IA de cadastro
+  const handleSEOOptimize = async () => {
+    if (!prodName.trim()) return;
+    setAiLoading(prev => ({ ...prev, seo: true }));
+    const catObj = categories.find(c => c.id === prodCategory);
+    const opt = await aiSimulator.optimizeTitleSEO(prodName, catObj?.name || '');
+    setProdName(opt);
+    setAiLoading(prev => ({ ...prev, seo: false }));
+  };
+
+  const handleCategorySuggest = async () => {
+    if (!prodName.trim()) return;
+    setAiLoading(prev => ({ ...prev, category: true }));
+    const suggestedId = await aiSimulator.suggestCategory(prodName, categories);
+    if (suggestedId) {
+      setProdCategory(suggestedId);
+    }
+    setAiLoading(prev => ({ ...prev, category: false }));
+  };
+
+  const handleDescriptionGenerate = async () => {
+    if (!prodName.trim()) return;
+    setAiLoading(prev => ({ ...prev, desc: true }));
+    const catObj = categories.find(c => c.id === prodCategory);
+    const desc = await aiSimulator.generateProductDescription(prodName, catObj?.name || '', aiTone);
+    setProdDesc(desc);
+    setAiLoading(prev => ({ ...prev, desc: false }));
+  };
+
+  const handleRemoveBG = async () => {
+    if (prodImages.length === 0) return;
+    setAiLoading(prev => ({ ...prev, removeBg: true }));
+    const result = await aiSimulator.removeBackground(prodImages[0]);
+    setProdImages(prev => [result, ...prev.slice(1)]);
+    setAiLoading(prev => ({ ...prev, removeBg: false }));
+  };
+
+  // Handler para IA do Banner
+  const [aiCampaignName, setAiCampaignName] = useState('');
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
+
+  const handleGenerateBanner = async () => {
+    if (!aiCampaignName.trim()) return;
+    setAiLoading(prev => ({ ...prev, banner: true }));
+    const result = await aiSimulator.generateBannerImage(aiCampaignName, config.name, config.primaryColor);
+    setConfigBannerImage(result);
+    
+    // Auto-salva na configuração
+    const updatedConfig = {
+      ...config,
+      bannerImage: result,
+      bannerTitle: aiCampaignName
+    };
+    saveConfig(updatedConfig);
+
+    setAiLoading(prev => ({ ...prev, banner: false }));
+    setShowCampaignModal(false);
+    setAiCampaignName('');
+  };
+
+  // Handler para Instagram Marketing Modal
+  const handleInstagramGenerate = async (p: Product) => {
+    setInstagramProduct(p);
+    setInstagramModalOpen(true);
+    setIsCopied(false);
+    setAiLoading(prev => ({ ...prev, instagram: true }));
+    const catObj = categories.find(c => c.id === p.categoryId);
+    const tags = await aiSimulator.suggestHashtags(p.name, catObj?.name || '');
+    setInstagramHashtags(tags);
+    const caption = await aiSimulator.generateInstagramPost(p.name, p.price, p.promoPrice, tags);
+    setInstagramCaption(caption);
+    setAiLoading(prev => ({ ...prev, instagram: false }));
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(instagramCaption);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  // Handler para Auto-responder Chat
+  const handleSuggestChatReply = (msgContent: string, msgId: string) => {
+    setSelectedMsgForAi(msgId);
+    const reply = aiSimulator.getFAQResponse(msgContent, config, products);
+    setAiChatDraft(reply);
+  };
+
+  const handleSendChatReply = (msgId: string) => {
+    // Adiciona a resposta simulada no localStorage das mensagens
+    const messages = JSON.parse(localStorage.getItem('floricultura_customer_messages') || '[]');
+    const index = messages.findIndex((m: any) => m.id === msgId);
+    if (index >= 0) {
+      messages[index].reply = aiChatDraft;
+      messages[index].read = true;
+      localStorage.setItem('floricultura_customer_messages', JSON.stringify(messages));
+      setCustomerMessages(messages);
+    }
+    setSelectedMsgForAi(null);
+    setAiChatDraft('');
+  };
+
+  // Handler para toggle de permissões pelo proprietário
+  const handlePermissionToggle = (role: Role, field: keyof RolePermissions) => {
+    const rolePerms = config.rolePermissions || {
+      owner: { viewDashboard: true, manageProducts: true, manageCategories: true, manageOrders: true, manageChat: true, manageEditor: true, useAiTools: true },
+      manager: { viewDashboard: true, manageProducts: true, manageCategories: true, manageOrders: true, manageChat: true, manageEditor: true, useAiTools: true },
+      staff: { viewDashboard: false, manageProducts: true, manageCategories: false, manageOrders: true, manageChat: false, manageEditor: false, useAiTools: false },
+      stock: { viewDashboard: false, manageProducts: true, manageCategories: false, manageOrders: false, manageChat: false, manageEditor: false, useAiTools: false },
+      support: { viewDashboard: false, manageProducts: false, manageCategories: false, manageOrders: true, manageChat: true, manageEditor: false, useAiTools: false },
+      marketing: { viewDashboard: true, manageProducts: false, manageCategories: true, manageOrders: false, manageChat: false, manageEditor: true, useAiTools: true },
+    };
+
+    const updatedRolePerms = {
+      ...rolePerms,
+      [role]: {
+        ...rolePerms[role],
+        [field]: !rolePerms[role][field]
+      }
+    };
+
+    const updatedConfig = {
+      ...config,
+      rolePermissions: updatedRolePerms
+    };
+    saveConfig(updatedConfig);
+  };
+
+  const handleAddUserSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUsername.trim() || !newPassword.trim() || !newDisplayName.trim()) return;
+
+    saveUser({
+      username: newUsername.trim().toLowerCase(),
+      password: newPassword,
+      name: newDisplayName.trim(),
+      role: newUserRole
+    });
+
+    setShowAddUserModal(false);
+    setNewUsername('');
+    setNewPassword('');
+    setNewDisplayName('');
+  };
+
 
   // Estados da configuração visual (Shopify-like Builder)
   const [configName, setConfigName] = useState(config.name);
@@ -471,87 +694,135 @@ export const AdminDashboard: React.FC = () => {
       {/* Top Navbar */}
       <div style={{ borderBottom: '1px solid var(--color-admin-border)', backgroundColor: 'var(--color-admin-card)', padding: '12px 0' }}>
         <div className="container flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-6">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: 'var(--border-radius-theme)',
-                fontSize: '14px',
-                fontWeight: 600,
-                backgroundColor: activeTab === 'dashboard' ? 'var(--color-primary)' : 'transparent',
-                color: '#ffffff'
-              }}
-            >
-              <LayoutDashboard size={18} /> Dashboard / Analytics
-            </button>
-            <button
-              onClick={() => setActiveTab('products')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: 'var(--border-radius-theme)',
-                fontSize: '14px',
-                fontWeight: 600,
-                backgroundColor: activeTab === 'products' ? 'var(--color-primary)' : 'transparent',
-                color: '#ffffff'
-              }}
-            >
-              <ShoppingBag size={18} /> Produtos
-            </button>
-            <button
-              onClick={() => setActiveTab('categories')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: 'var(--border-radius-theme)',
-                fontSize: '14px',
-                fontWeight: 600,
-                backgroundColor: activeTab === 'categories' ? 'var(--color-primary)' : 'transparent',
-                color: '#ffffff'
-              }}
-            >
-              <FolderOpen size={18} /> Categorias
-            </button>
-            <button
-              onClick={() => setActiveTab('editor')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: 'var(--border-radius-theme)',
-                fontSize: '14px',
-                fontWeight: 600,
-                backgroundColor: activeTab === 'editor' ? 'var(--color-primary)' : 'transparent',
-                color: '#ffffff'
-              }}
-            >
-              <Monitor size={18} style={{ color: 'var(--color-secondary)' }} /> Editor Visual
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: 'var(--border-radius-theme)',
-                fontSize: '14px',
-                fontWeight: 600,
-                backgroundColor: activeTab === 'settings' ? 'var(--color-primary)' : 'transparent',
-                color: '#ffffff'
-              }}
-            >
-              <Settings size={18} /> Dados Gerais
-            </button>
+          <div className="flex items-center gap-6 flex-wrap">
+            {/* Usuário Logado */}
+            {currentUser && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginRight: '16px', borderRight: '1px solid var(--color-admin-border)', paddingRight: '16px' }}>
+                <div style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--color-primary)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                  border: '2px solid rgba(255,255,255,0.1)'
+                }}>
+                  {currentUser.name.charAt(0).toUpperCase()}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-admin-text)' }}>{currentUser.name}</span>
+                  <span style={{
+                    fontSize: '9px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    color: currentUser.role === 'owner' ? 'var(--color-primary)' : 'var(--color-secondary)',
+                    backgroundColor: currentUser.role === 'owner' ? 'rgba(var(--color-primary-rgb), 0.15)' : 'rgba(var(--color-secondary-rgb), 0.15)',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    width: 'fit-content',
+                    marginTop: '2px'
+                  }}>
+                    {getRoleLabel(currentUser.role)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Abas Permitidas */}
+            {(perms.viewDashboard || perms.manageOrders || perms.manageChat) && (
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--border-radius-theme)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  backgroundColor: activeTab === 'dashboard' ? 'var(--color-primary)' : 'transparent',
+                  color: '#ffffff'
+                }}
+              >
+                <LayoutDashboard size={18} /> Dashboard / Analytics
+              </button>
+            )}
+            {perms.manageProducts && (
+              <button
+                onClick={() => setActiveTab('products')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--border-radius-theme)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  backgroundColor: activeTab === 'products' ? 'var(--color-primary)' : 'transparent',
+                  color: '#ffffff'
+                }}
+              >
+                <ShoppingBag size={18} /> Produtos
+              </button>
+            )}
+            {perms.manageCategories && (
+              <button
+                onClick={() => setActiveTab('categories')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--border-radius-theme)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  backgroundColor: activeTab === 'categories' ? 'var(--color-primary)' : 'transparent',
+                  color: '#ffffff'
+                }}
+              >
+                <FolderOpen size={18} /> Categorias
+              </button>
+            )}
+            {perms.manageEditor && (
+              <button
+                onClick={() => setActiveTab('editor')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--border-radius-theme)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  backgroundColor: activeTab === 'editor' ? 'var(--color-primary)' : 'transparent',
+                  color: '#ffffff'
+                }}
+              >
+                <Monitor size={18} style={{ color: 'var(--color-secondary)' }} /> Editor Visual
+              </button>
+            )}
+            {(currentUser?.role === 'owner' || currentUser?.role === 'manager') && (
+              <button
+                onClick={() => setActiveTab('settings')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 16px',
+                  borderRadius: 'var(--border-radius-theme)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  backgroundColor: activeTab === 'settings' ? 'var(--color-primary)' : 'transparent',
+                  color: '#ffffff'
+                }}
+              >
+                <Settings size={18} /> Dados Gerais
+              </button>
+            )}
           </div>
 
           <button
@@ -1101,19 +1372,62 @@ export const AdminDashboard: React.FC = () => {
                           </div>
                           <p style={{ fontSize: '13px', color: 'var(--color-admin-text)' }}>{msg.message}</p>
                           
-                          {!msg.read && (
-                            <button
-                              onClick={() => {
-                                const list = customerMessages.map(m => m.id === msg.id ? { ...m, read: true } : m);
-                                localStorage.setItem('floricultura_customer_messages', JSON.stringify(list));
-                                setCustomerMessages(list);
-                              }}
-                              className="btn btn-sm btn-outline"
-                              style={{ color: 'var(--color-primary)', border: '1px solid var(--color-primary)', marginTop: '8px' }}
-                            >
-                              Marcar como Lida
-                            </button>
-                          )}
+                          {msg.reply ? (
+                             <div style={{ backgroundColor: 'var(--color-admin-input)', padding: '10px', borderRadius: '6px', fontSize: '12px', borderLeft: '3px solid var(--color-primary)', marginTop: '4px' }}>
+                               <strong style={{ color: 'var(--color-primary)' }}>✓ Respondido por IA:</strong>
+                               <p style={{ marginTop: '4px', color: 'var(--color-admin-text-muted)' }}>{msg.reply}</p>
+                             </div>
+                           ) : (
+                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+                               {/* Área de Rascunho IA se selecionado */}
+                               {selectedMsgForAi === msg.id ? (
+                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: 'var(--color-admin-input)', padding: '12px', borderRadius: '6px' }}>
+                                   <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Rascunho IA (Pode editar antes de enviar):</label>
+                                   <textarea
+                                     value={aiChatDraft}
+                                     onChange={e => setAiChatDraft(e.target.value)}
+                                     className="form-control"
+                                     rows={3}
+                                     style={{ fontSize: '12px', backgroundColor: 'var(--color-admin-card)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
+                                   />
+                                   <div style={{ display: 'flex', gap: '8px' }}>
+                                     <button type="button" onClick={() => handleSendChatReply(msg.id)} className="btn btn-sm btn-primary" style={{ padding: '4px 10px', fontSize: '11px' }}>
+                                       Enviar Resposta
+                                     </button>
+                                     <button type="button" onClick={() => setSelectedMsgForAi(null)} className="btn btn-sm btn-outline" style={{ padding: '4px 10px', fontSize: '11px', color: 'var(--color-admin-text)' }}>
+                                       Cancelar
+                                     </button>
+                                   </div>
+                                 </div>
+                               ) : (
+                                 <div style={{ display: 'flex', gap: '10px' }}>
+                                   {!msg.read && (
+                                     <button
+                                       onClick={() => {
+                                         const list = customerMessages.map(m => m.id === msg.id ? { ...m, read: true } : m);
+                                         localStorage.setItem('floricultura_customer_messages', JSON.stringify(list));
+                                         setCustomerMessages(list);
+                                       }}
+                                       className="btn btn-sm btn-outline"
+                                       style={{ fontSize: '11px', padding: '6px 12px' }}
+                                     >
+                                       Marcar como Lida
+                                     </button>
+                                   )}
+                                   {perms.useAiTools && (
+                                     <button
+                                       type="button"
+                                       onClick={() => handleSuggestChatReply(msg.message, msg.id)}
+                                       className="btn btn-sm btn-primary"
+                                       style={{ fontSize: '11px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                     >
+                                       <Sparkles size={12} /> Auto-responder IA
+                                     </button>
+                                   )}
+                                 </div>
+                               )}
+                             </div>
+                           )}
                         </div>
                       ))}
                     </div>
@@ -1196,11 +1510,16 @@ export const AdminDashboard: React.FC = () => {
                         />
                       </td>
                       <td style={{ padding: '12px 16px' }}>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <button onClick={() => openEditProductModal(p)} style={{ color: '#fff' }}><Edit2 size={16} /></button>
-                          <button onClick={() => duplicateProduct(p.id)} style={{ color: '#9f7aea' }}><Copy size={16} /></button>
-                          <button onClick={() => deleteProduct(p.id)} style={{ color: 'var(--color-danger)' }}><Trash2 size={16} /></button>
-                        </div>
+                        {currentUser?.role !== 'stock' ? (
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <button onClick={() => openEditProductModal(p)} style={{ color: '#fff' }} title="Editar"><Edit2 size={16} /></button>
+                            <button onClick={() => handleInstagramGenerate(p)} style={{ color: '#e1306c' }} title="Gerar Post Instagram (IA)"><Camera size={16} /></button>
+                            <button onClick={() => duplicateProduct(p.id)} style={{ color: '#9f7aea' }} title="Duplicar"><Copy size={16} /></button>
+                            <button onClick={() => deleteProduct(p.id)} style={{ color: 'var(--color-danger)' }} title="Excluir"><Trash2 size={16} /></button>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', fontWeight: 600 }}>Somente Estoque</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -1366,6 +1685,31 @@ export const AdminDashboard: React.FC = () => {
                       style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', padding: '8px', fontSize: '12px' }}
                     />
                   </div>
+                  
+                  {perms.useAiTools && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCampaignModal(true)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        fontSize: '11px',
+                        color: 'var(--color-secondary)',
+                        backgroundColor: 'rgba(252, 223, 215, 0.15)',
+                        border: '1px dashed var(--color-secondary)',
+                        borderRadius: '6px',
+                        padding: '8px',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        marginTop: '4px'
+                      }}
+                    >
+                      <Sparkles size={13} /> {aiLoading.banner ? 'Gerando Banner...' : 'Gerar Banner por IA'}
+                    </button>
+                  )}
+
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" style={{ fontSize: '11px' }}>Imagem de Fundo (Selecione arquivo)</label>
                     <input
@@ -1496,6 +1840,128 @@ export const AdminDashboard: React.FC = () => {
               </form>
             </div>
 
+            {/* Gerenciador de Perfis e Permissões (Visível para Dono e Gerente) */}
+            {(currentUser?.role === 'owner' || currentUser?.role === 'manager') && (
+              <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '24px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>Perfis & Permissões Granulares</h3>
+                <p style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', marginBottom: '16px' }}>
+                  {currentUser?.role === 'owner' 
+                    ? 'Configure quais módulos e ações cada perfil administrativo possui acesso no sistema.' 
+                    : 'Consulte os módulos autorizados para cada perfil administrativo (Apenas Leitura).'}
+                </p>
+
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Selecionar Perfil para Editar</label>
+                  <select
+                    value={selectedRoleForPerms}
+                    onChange={e => setSelectedRoleForPerms(e.target.value as Role)}
+                    className="form-control"
+                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
+                  >
+                    <option value="manager">Gerente</option>
+                    <option value="staff">Funcionário</option>
+                    <option value="stock">Estoquista</option>
+                    <option value="support">Atendimento</option>
+                    <option value="marketing">Marketing</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px' }}>
+                  {[
+                    { key: 'viewDashboard', label: 'Ver Dashboard e Analytics' },
+                    { key: 'manageProducts', label: 'Gerenciar Produtos (CRUD)' },
+                    { key: 'manageCategories', label: 'Gerenciar Categorias (CRUD)' },
+                    { key: 'manageOrders', label: 'Atualizar Pedidos' },
+                    { key: 'manageChat', label: 'Atender Mensagens de Clientes' },
+                    { key: 'manageEditor', label: 'Modificar Temas e Editor Visual' },
+                    { key: 'useAiTools', label: 'Usar Ferramentas de IA' }
+                  ].map(perm => {
+                    const rolePerms = config.rolePermissions?.[selectedRoleForPerms] || {
+                      viewDashboard: true, manageProducts: true, manageCategories: true, manageOrders: true, manageChat: true, manageEditor: true, useAiTools: true
+                    };
+                    const isChecked = !!rolePerms[perm.key as keyof RolePermissions];
+                    return (
+                      <label
+                        key={perm.key}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          fontSize: '13px',
+                          cursor: currentUser?.role === 'owner' ? 'pointer' : 'not-allowed',
+                          opacity: currentUser?.role === 'owner' ? 1 : 0.7
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={currentUser?.role !== 'owner'}
+                          onChange={() => handlePermissionToggle(selectedRoleForPerms, perm.key as keyof RolePermissions)}
+                        />
+                        <span>{perm.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Gerenciador de Usuários (Apenas Dono) */}
+            {currentUser?.role === 'owner' && (
+              <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }} className="justify-between">
+                  <h3 style={{ fontSize: '15px', fontWeight: 700 }}>Usuários do Painel</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddUserModal(true)}
+                    className="btn btn-sm btn-primary"
+                    style={{ padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}
+                  >
+                    <UserPlus size={12} /> Novo
+                  </button>
+                </div>
+
+                <div style={{ maxHeight: '250px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {users.map(u => (
+                    <div
+                      key={u.username}
+                      style={{
+                        padding: '10px 14px',
+                        backgroundColor: 'var(--color-admin-input)',
+                        border: '1px solid var(--color-admin-border)',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '12px'
+                      }}
+                      className="justify-between"
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontWeight: 700 }}>{u.name}</span>
+                        <span style={{ fontSize: '10px', color: 'var(--color-admin-text-muted)' }}>
+                          @{u.username} • <span style={{ color: 'var(--color-secondary)', fontWeight: 600 }}>{getRoleLabel(u.role)}</span>
+                        </span>
+                      </div>
+                      {u.username !== 'dono' && u.username !== currentUser.username && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Excluir o usuário @${u.username}?`)) {
+                              deleteUser(u.username);
+                            }
+                          }}
+                          style={{ color: 'var(--color-danger)', border: 'none', background: 'none', cursor: 'pointer' }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{ backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', borderRadius: 'var(--border-radius-theme)', padding: '24px' }}>
               <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '16px', color: 'var(--color-danger)' }}>Ações do Desenvolvedor</h3>
               <p style={{ fontSize: '12px', color: 'var(--color-admin-text-muted)', marginBottom: '16px' }}>
@@ -1542,11 +2008,35 @@ export const AdminDashboard: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
                     <div className="form-group">
-                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome*</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label className="form-label" style={{ color: 'var(--color-admin-text)', marginBottom: 0 }}>Nome*</label>
+                        {perms.useAiTools && (
+                          <button
+                            type="button"
+                            onClick={handleSEOOptimize}
+                            disabled={aiLoading.seo}
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--color-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            <Sparkles size={12} /> {aiLoading.seo ? 'Otimizando...' : 'SEO IA'}
+                          </button>
+                        )}
+                      </div>
                       <input type="text" required value={prodName} onChange={e => setProdName(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
                     </div>
                     <div className="form-group">
-                      <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Categoria</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label className="form-label" style={{ color: 'var(--color-admin-text)', marginBottom: 0 }}>Categoria</label>
+                        {perms.useAiTools && (
+                          <button
+                            type="button"
+                            onClick={handleCategorySuggest}
+                            disabled={aiLoading.category}
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--color-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            <Sparkles size={12} /> {aiLoading.category ? '...' : 'Sugerir'}
+                          </button>
+                        )}
+                      </div>
                       <select value={prodCategory} onChange={e => setProdCategory(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}>
                         {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
@@ -1569,7 +2059,31 @@ export const AdminDashboard: React.FC = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Descrição*</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label className="form-label" style={{ color: 'var(--color-admin-text)', marginBottom: 0 }}>Descrição*</label>
+                      {perms.useAiTools && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <select
+                            value={aiTone}
+                            onChange={e => setAiTone(e.target.value)}
+                            style={{ fontSize: '11px', padding: '2px 4px', backgroundColor: 'var(--color-admin-input)', color: 'var(--color-admin-text)', border: '1px solid var(--color-admin-border)', borderRadius: '4px' }}
+                          >
+                            <option value="commercial">Comercial</option>
+                            <option value="romantic">Romântico</option>
+                            <option value="elegant">Elegante</option>
+                            <option value="minimal">Minimalista</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={handleDescriptionGenerate}
+                            disabled={aiLoading.desc}
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--color-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                          >
+                            <Sparkles size={12} /> {aiLoading.desc ? 'Gerando...' : 'Gerar Descrição IA'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <textarea required value={prodDesc} onChange={e => setProdDesc(e.target.value)} className="form-control" rows={3} style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
                   </div>
 
@@ -1585,7 +2099,19 @@ export const AdminDashboard: React.FC = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Adicionar Foto (Upload)</label>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label className="form-label" style={{ color: 'var(--color-admin-text)', marginBottom: 0 }}>Adicionar Foto (Upload)</label>
+                      {perms.useAiTools && prodImages.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveBG}
+                          disabled={aiLoading.removeBg}
+                          style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--color-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          <Sparkles size={12} /> {aiLoading.removeBg ? 'Removendo...' : 'Remover Fundo (IA)'}
+                        </button>
+                      )}
+                    </div>
                     <input type="file" accept="image/*" onChange={handleFileChange} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', padding: '8px' }} />
                     {prodImages.length > 0 && (
                       <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
@@ -1605,6 +2131,150 @@ export const AdminDashboard: React.FC = () => {
                 <button type="submit" className="btn btn-primary">Salvar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CAMPANHA DE BANNER IA */}
+      {showCampaignModal && (
+        <div className="modal-overlay animate-fade" onClick={() => setShowCampaignModal(false)}>
+          <div className="modal-content animate-scale" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px', backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}>
+            <div className="modal-header" style={{ borderColor: 'var(--color-admin-border)' }}>
+              <h2 className="text-base font-bold">Criar Banner com IA</h2>
+              <button className="modal-close" onClick={() => setShowCampaignModal(false)} style={{ backgroundColor: 'var(--color-admin-input)' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Tema / Campanha Comercial</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Dia dos Namorados, Ofertas de Inverno..."
+                  value={aiCampaignName}
+                  onChange={e => setAiCampaignName(e.target.value)}
+                  className="form-control"
+                  style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ borderColor: 'var(--color-admin-border)' }}>
+              <button className="btn btn-outline" onClick={() => setShowCampaignModal(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={handleGenerateBanner} disabled={aiLoading.banner || !aiCampaignName.trim()}>
+                <Sparkles size={14} /> {aiLoading.banner ? 'Gerando...' : 'Gerar Arte'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CADASTRAR NOVO USUÁRIO */}
+      {showAddUserModal && (
+        <div className="modal-overlay animate-fade" onClick={() => setShowAddUserModal(false)}>
+          <div className="modal-content animate-scale" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px', backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}>
+            <div className="modal-header" style={{ borderColor: 'var(--color-admin-border)' }}>
+              <h2 className="text-base font-bold">Novo Usuário</h2>
+              <button className="modal-close" onClick={() => setShowAddUserModal(false)} style={{ backgroundColor: 'var(--color-admin-input)' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleAddUserSubmit}>
+              <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome Completo</label>
+                  <input type="text" required value={newDisplayName} onChange={e => setNewDisplayName(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Nome de Usuário (Login)</label>
+                  <input type="text" required value={newUsername} onChange={e => setNewUsername(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Senha</label>
+                  <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)} className="form-control" style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" style={{ color: 'var(--color-admin-text)' }}>Função / Perfil</label>
+                  <select
+                    value={newUserRole}
+                    onChange={e => setNewUserRole(e.target.value as Role)}
+                    className="form-control"
+                    style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)' }}
+                  >
+                    <option value="manager">Gerente</option>
+                    <option value="staff">Funcionário</option>
+                    <option value="stock">Estoquista</option>
+                    <option value="support">Atendimento</option>
+                    <option value="marketing">Marketing</option>
+                  </select>
+                </div>
+              </div>
+              <div className="modal-footer" style={{ borderColor: 'var(--color-admin-border)' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowAddUserModal(false)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary">Cadastrar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GERADOR INSTAGRAM IA */}
+      {instagramModalOpen && (
+        <div className="modal-overlay animate-fade" onClick={() => setInstagramModalOpen(false)}>
+          <div className="modal-content animate-scale" onClick={e => e.stopPropagation()} style={{ maxWidth: '500px', backgroundColor: 'var(--color-admin-card)', border: '1px solid var(--color-admin-border)', color: 'var(--color-admin-text)' }}>
+            <div className="modal-header" style={{ borderColor: 'var(--color-admin-border)' }}>
+              <h2 className="text-base font-bold" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Camera size={18} style={{ color: '#e1306c' }} /> Gerador de Post do Instagram (IA)
+              </h2>
+              <button className="modal-close" onClick={() => setInstagramModalOpen(false)} style={{ backgroundColor: 'var(--color-admin-input)' }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              {aiLoading.instagram ? (
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--color-admin-text-muted)', marginTop: '10px' }}>
+                    Criando post com IA...
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', gap: '12px', backgroundColor: 'var(--color-admin-input)', padding: '12px', borderRadius: '6px' }}>
+                    {instagramProduct?.images[0] && (
+                      <img src={instagramProduct.images[0]} alt="" style={{ width: '60px', height: '60px', borderRadius: '4px', objectFit: 'cover' }} />
+                    )}
+                    <div>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700 }}>{instagramProduct?.name}</h4>
+                      <p style={{ fontSize: '11px', color: 'var(--color-admin-text-muted)', marginTop: '2px' }}>
+                        Post gerado com IA baseado nos dados do produto.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Legenda Sugerida</label>
+                    <textarea
+                      value={instagramCaption}
+                      onChange={e => setInstagramCaption(e.target.value)}
+                      className="form-control"
+                      rows={8}
+                      style={{ backgroundColor: 'var(--color-admin-input)', borderColor: 'var(--color-admin-border)', color: 'var(--color-admin-text)', fontSize: '12px', fontFamily: 'monospace' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {instagramHashtags.map(t => (
+                      <span key={t} style={{ fontSize: '10px', backgroundColor: 'rgba(225,48,108,0.1)', color: '#e1306c', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer" style={{ borderColor: 'var(--color-admin-border)' }}>
+              <button className="btn btn-outline" onClick={() => setInstagramModalOpen(false)}>Fechar</button>
+              <button className="btn btn-primary" onClick={copyToClipboard} disabled={aiLoading.instagram}>
+                {isCopied ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Legenda</>}
+              </button>
+            </div>
           </div>
         </div>
       )}

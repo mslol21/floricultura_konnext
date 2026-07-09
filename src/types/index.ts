@@ -69,6 +69,7 @@ export interface BusinessConfig {
   backgroundColor: string; // Fundo do site
   textColor: string; // Texto geral
   sectionsOrder: string[]; // Ex: ['hero', 'categories', 'featured', 'bestsellers', 'catalog']
+  rolePermissions?: Record<string, RolePermissions>;
 }
 
 export interface AnalyticsEvent {
@@ -112,3 +113,22 @@ export interface DashboardStats {
   avgTimeOnPage: number; // Tempo médio na página em segundos
   heatmap: Record<string, number>; // ElementID -> contagem de cliques
 }
+
+export type Role = 'owner' | 'manager' | 'staff' | 'stock' | 'support' | 'marketing';
+
+export interface RolePermissions {
+  viewDashboard: boolean;
+  manageProducts: boolean; // CRUD completo (exceção para estoquista que edita apenas estoque in-line)
+  manageCategories: boolean;
+  manageOrders: boolean;
+  manageChat: boolean;
+  manageEditor: boolean;
+  useAiTools: boolean;
+}
+
+export interface UserProfile {
+  username: string;
+  name: string;
+  role: Role;
+}
+

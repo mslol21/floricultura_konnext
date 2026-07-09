@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useCatalog } from '../context/CatalogContext';
 import { ProductCard } from '../components/ProductCard';
 import { dbService } from '../services/db';
-import { Search, Sparkles, Flame, X, MessageSquare, Send, Check } from 'lucide-react';
+import { aiSimulator } from '../utils/aiSimulator';
+import { Search, Sparkles, Flame, X, MessageSquare, Send, Check, Bot } from 'lucide-react';
 
 export const Catalog: React.FC = () => {
   const {
@@ -20,6 +21,30 @@ export const Catalog: React.FC = () => {
   const [chatName, setChatName] = useState('');
   const [chatMsg, setChatMsg] = useState('');
   const [chatSent, setChatSent] = useState(false);
+
+  // --- CHATBOT IA FAQ ---
+  const [chatMode, setChatMode] = useState<'ai' | 'human'>('ai');
+  const [chatbotInput, setChatbotInput] = useState('');
+  const [botTyping, setBotTyping] = useState(false);
+  const [aiMessages, setAiMessages] = useState<any[]>(() => [
+    { sender: 'bot', text: 'Olá! Sou a assistente inteligente da loja. Como posso ajudar você hoje? Pergunte-me sobre frete, endereço, horários de atendimento ou preços!' }
+  ]);
+
+  const handleSendChatbotMsg = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatbotInput.trim()) return;
+
+    const userText = chatbotInput.trim();
+    setAiMessages(prev => [...prev, { sender: 'user', text: userText }]);
+    setChatbotInput('');
+    setBotTyping(true);
+
+    setTimeout(() => {
+      const response = aiSimulator.getFAQResponse(userText, config, products);
+      setAiMessages(prev => [...prev, { sender: 'bot', text: response }]);
+      setBotTyping(false);
+    }, 1000);
+  };
 
   // Filtragem de produtos
   const getFilteredProducts = () => {
@@ -443,67 +468,183 @@ export const Catalog: React.FC = () => {
               color: '#ffffff',
               padding: '12px 16px',
               display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }} className="justify-between">
-              <span style={{ fontSize: '13px', fontWeight: 700 }}>🌸 Fale Conosco</span>
-              <button onClick={() => setChatOpen(false)} style={{ color: '#ffffff' }}>
-                <X size={16} />
-              </button>
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} className="justify-between">
+                <span style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Bot size={16} /> Suporte Konnexy
+                </span>
+                <button onClick={() => setChatOpen(false)} style={{ color: '#ffffff' }}>
+                  <X size={16} />
+                </button>
+              </div>
+              
+              {/* Tab Switcher */}
+              <div style={{ display: 'flex', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: '4px', padding: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => setChatMode('ai')}
+                  style={{
+                    flex: 1,
+                    padding: '4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    borderRadius: '3px',
+                    backgroundColor: chatMode === 'ai' ? 'rgba(255,255,255,0.9)' : 'transparent',
+                    color: chatMode === 'ai' ? 'var(--color-primary)' : '#ffffff',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-fast)'
+                  }}
+                >
+                  Assistente IA
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChatMode('human')}
+                  style={{
+                    flex: 1,
+                    padding: '4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    borderRadius: '3px',
+                    backgroundColor: chatMode === 'human' ? 'rgba(255,255,255,0.9)' : 'transparent',
+                    color: chatMode === 'human' ? 'var(--color-primary)' : '#ffffff',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'var(--transition-fast)'
+                  }}
+                >
+                  Deixar Recado
+                </button>
+              </div>
             </div>
 
             {/* Chat Body */}
-            <div style={{ padding: '16px', flex: 1 }}>
-              {chatSent ? (
-                <div style={{ textAlign: 'center', padding: '20px 0' }} className="animate-fade">
-                  <div style={{
-                    backgroundColor: 'rgba(46, 196, 182, 0.1)',
-                    color: 'var(--color-success)',
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto 12px auto'
-                  }}>
-                    <Check size={20} />
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '320px', overflow: 'hidden' }}>
+              {chatMode === 'ai' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '12px' }}>
+                  {/* Messages list */}
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '8px' }} className="hide-scrollbar">
+                    {aiMessages.map((m, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex',
+                          justifyContent: m.sender === 'user' ? 'flex-end' : 'flex-start',
+                          alignItems: 'flex-start',
+                          gap: '6px'
+                        }}
+                      >
+                        {m.sender === 'bot' && (
+                          <div style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--color-secondary)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 'bold', flexShrink: 0 }}>
+                            IA
+                          </div>
+                        )}
+                        <div style={{
+                          maxWidth: '80%',
+                          padding: '8px 12px',
+                          borderRadius: m.sender === 'user' ? '12px 12px 0 12px' : '0 12px 12px 12px',
+                          backgroundColor: m.sender === 'user' ? 'var(--color-primary)' : 'var(--color-secondary)',
+                          color: m.sender === 'user' ? '#ffffff' : 'var(--color-text-dark)',
+                          fontSize: '12px',
+                          lineHeight: '1.4',
+                          whiteSpace: 'pre-wrap'
+                        }}>
+                          {m.text}
+                        </div>
+                      </div>
+                    ))}
+                    {botTyping && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ width: '22px', height: '22px', borderRadius: '50%', backgroundColor: 'var(--color-secondary)', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 'bold', flexShrink: 0 }}>
+                          IA
+                        </div>
+                        <div style={{ padding: '8px 12px', borderRadius: '0 12px 12px 12px', backgroundColor: 'var(--color-secondary)', fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                          Digitando...
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text)' }}>Mensagem Enviada!</h4>
-                  <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                    O lojista foi notificado e responderá no seu WhatsApp em instantes.
-                  </p>
-                </div>
-              ) : (
-                <form onSubmit={handleSendChat} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div className="form-group" style={{ marginBottom: 0, gap: '4px' }}>
-                    <label className="form-label" style={{ fontSize: '11px' }}>Seu Nome</label>
+                  
+                  {/* Message Input */}
+                  <form onSubmit={handleSendChatbotMsg} style={{ display: 'flex', gap: '6px', borderTop: '1px solid var(--color-border)', paddingTop: '8px' }}>
                     <input
                       type="text"
-                      required
-                      value={chatName}
-                      onChange={e => setChatName(e.target.value)}
-                      className="form-control"
-                      placeholder="Ex: João Silva"
-                      style={{ padding: '8px 12px', fontSize: '13px' }}
+                      placeholder="Pergunte sobre frete, horários..."
+                      value={chatbotInput}
+                      onChange={e => setChatbotInput(e.target.value)}
+                      style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        fontSize: '12px',
+                        borderRadius: '4px',
+                        border: '1px solid var(--color-border)',
+                        outline: 'none',
+                        backgroundColor: '#ffffff',
+                        color: 'var(--color-text-dark)'
+                      }}
                     />
-                  </div>
-                  <div className="form-group" style={{ marginBottom: 0, gap: '4px' }}>
-                    <label className="form-label" style={{ fontSize: '11px' }}>Mensagem ou Dúvida</label>
-                    <textarea
-                      required
-                      rows={3}
-                      value={chatMsg}
-                      onChange={e => setChatMsg(e.target.value)}
-                      className="form-control"
-                      placeholder="Qual sua dúvida sobre as flores?"
-                      style={{ padding: '8px 12px', fontSize: '13px', resize: 'none' }}
-                    />
-                  </div>
-                  <button type="submit" className="btn btn-sm btn-primary btn-full" style={{ padding: '8px' }}>
-                    <Send size={12} /> Enviar Mensagem
-                  </button>
-                </form>
+                    <button type="submit" style={{ backgroundColor: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: '4px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                      <Send size={14} />
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <div style={{ padding: '16px', flex: 1, overflowY: 'auto' }}>
+                  {chatSent ? (
+                    <div style={{ textAlign: 'center', padding: '20px 0' }} className="animate-fade">
+                      <div style={{
+                        backgroundColor: 'rgba(46, 196, 182, 0.1)',
+                        color: 'var(--color-success)',
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 12px auto'
+                      }}>
+                        <Check size={20} />
+                      </div>
+                      <h4 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--color-text)' }}>Mensagem Enviada!</h4>
+                      <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
+                        O lojista foi notificado e responderá no seu WhatsApp em instantes.
+                      </p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSendChat} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div className="form-group" style={{ marginBottom: 0, gap: '4px' }}>
+                        <label className="form-label" style={{ fontSize: '11px' }}>Seu Nome</label>
+                        <input
+                          type="text"
+                          required
+                          value={chatName}
+                          onChange={e => setChatName(e.target.value)}
+                          className="form-control"
+                          placeholder="Ex: João Silva"
+                          style={{ padding: '8px 12px', fontSize: '13px' }}
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0, gap: '4px' }}>
+                        <label className="form-label" style={{ fontSize: '11px' }}>Mensagem ou Dúvida</label>
+                        <textarea
+                          required
+                          rows={3}
+                          value={chatMsg}
+                          onChange={e => setChatMsg(e.target.value)}
+                          className="form-control"
+                          placeholder="Qual sua dúvida sobre as flores?"
+                          style={{ padding: '8px 12px', fontSize: '13px', resize: 'none' }}
+                        />
+                      </div>
+                      <button type="submit" className="btn btn-sm btn-primary btn-full" style={{ padding: '8px' }}>
+                        <Send size={12} /> Enviar Mensagem
+                      </button>
+                    </form>
+                  )}
+                </div>
               )}
             </div>
           </div>
